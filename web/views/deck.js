@@ -223,6 +223,7 @@ export async function mount(el, ctx) {
         </button>`
       )
       .join('');
+    listEl.querySelectorAll('.card-list__front').forEach((node) => renderMath(node));
     listEl.querySelectorAll('[data-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const card = cards.find((c) => String(c.id) === btn.dataset.id);
