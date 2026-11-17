@@ -1,12 +1,6 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc } from '../math.js';
-import { activityChart, fmtPercent, plural, toast } from '../ui.js';
-
-const BUCKETS = [
-  { key: 'new', label: 'New', cls: 'new' },
-  { key: 'learning', label: 'Learning', cls: 'learning' },
-  { key: 'mature', label: 'Mature', cls: '' },
-];
+import { activityChart, fmtPercent, mixPieChart, plural, toast } from '../ui.js';
 
 export async function mount(el, ctx) {
   let disposed = false;
@@ -89,18 +83,8 @@ export async function mount(el, ctx) {
               <h2 class="chart-panel__title" id="mix-title">Card mix</h2>
               <span class="chart-panel__meta">${plural(mixTotal, 'card')}</span>
             </div>
-            <div class="distribution">
-              ${BUCKETS.map((b) => {
-                const value = Number(mix.find((m) => m.bucket === b.key)?.cards) || 0;
-                const width = mixTotal ? Math.max((value / mixTotal) * 100, value ? 2 : 0) : 0;
-                return `<div class="distribution__row">
-                  <span class="distribution__label">${b.label}</span>
-                  <span class="distribution__track"><span class="distribution__fill distribution__fill--${b.cls}" style="width:${width}%"></span></span>
-                  <span class="distribution__value">${value}</span>
-                </div>`;
-              }).join('')}
-            </div>
-            <p class="muted" style="margin-top:16px;font: var(--md-sys-typescale-body-small)">
+            ${mixPieChart(mix)}
+            <p class="muted mix-note">
               New cards have never been reviewed. Mature cards have an interval of three reps or more.
             </p>
           </section>

@@ -285,6 +285,71 @@ export function activityChart(days, { weeks = 30 } = {}) {
   </svg>`;
 }
 
+/* ---------- Card mix pie ---------- */
+
+const MIX_BUCKETS = [
+  { key: 'new', label: 'New' },
+  { key: 'learning', label: 'Learning' },
+  { key: 'mature', label: 'Mature' },
+];
+
+export function mixPieChart(mix = [], { buckets = MIX_BUCKETS } = {}) {
+  const values = buckets.map((b) => ({
+    ...b,
+    value: Math.max(Number(mix.find((m) => m.bucket === b.key)?.cards) || 0, 0),
+  }));
+  const total = values.reduce((a, b) => a + b.value, 0);
+
+  const R = 54;
+  const CIRC = 2 * Math.PI * R;
+  const visible = values.filter((b) => b.value > 0);
+  const gap = visible.length > 1 ? 3 : 0;
+
+  let cursor = 0;
+  const arcs = visible
+    .map((b) => {
+      const len = (b.value / total) * CIRC;
+      const draw = Math.max(len - gap, 0.5);
+      const offset = -(cursor + gap / 2);
+      cursor += len;
+      const label = `${b.label}: ${b.value} of ${total} cards`;
+      return `<circle class="pie__seg pie--${b.key}" cx="70" cy="70" r="${R}" stroke-dasharray="${draw.toFixed(
+        2
+      )} ${(CIRC - draw).toFixed(2)}" stroke-dashoffset="${offset.toFixed(
+        2
+      )}" transform="rotate(-90 70 70)"><title>${escapeHtml(label)}</title></circle>`;
+    })
+    .join('');
+
+  const legend = values
+    .map((b) => {
+      const share = total ? (b.value / total) * 100 : 0;
+      const pctText = !total ? '—' : b.value > 0 && share < 1 ? '<1%' : `${Math.round(share)}%`;
+      return `<div class="pie-legend__row">
+        <span class="pie-legend__swatch pie--${b.key}" aria-hidden="true"></span>
+        <span class="pie-legend__label">${escapeHtml(b.label)}</span>
+        <span class="pie-legend__value">${b.value}</span>
+        <span class="pie-legend__pct">${pctText}</span>
+      </div>`;
+    })
+    .join('');
+
+  const summary = values.map((b) => `${b.value} ${b.label.toLowerCase()}`).join(', ');
+  return `<div class="pie-chart">
+    <div class="pie">
+      <svg class="pie__svg" viewBox="0 0 140 140" role="img" aria-label="${escapeHtml(
+        `Card mix: ${summary}. ${total} cards total.`
+      )}">
+        <circle class="pie__track" cx="70" cy="70" r="${R}"></circle>
+        ${arcs}
+        <text class="pie__total" x="70" y="70" text-anchor="middle" dominant-baseline="central">${total}</text>
+        <text class="pie__total-label" x="70" y="90" text-anchor="middle">cards</text>
+      </svg>
+    </div>
+    <div class="pie-legend">${legend}</div>
+  </div>`;
+}
+
 /* ---------- Small DOM helpers ---------- */
 
 export function qs(sel, root = document) {
