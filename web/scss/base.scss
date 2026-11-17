@@ -367,8 +367,12 @@ body.focus-mode .screen {
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    width: 100%;
     padding: 6px 0;
+    appearance: none;
+    border: 0;
     border-radius: var(--md-sys-shape-corner-medium);
+    background: transparent;
     color: var(--md-sys-color-on-surface-variant);
     font: var(--md-sys-typescale-label-small);
   }
@@ -391,6 +395,14 @@ body.focus-mode .screen {
     color: var(--md-sys-color-on-primary-container);
   }
 
+  .bottom-nav__item:hover {
+    color: var(--md-sys-color-on-surface);
+  }
+
+  .bottom-nav__item:not([aria-current="page"]):hover .icon {
+    background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  }
+
   .page-head {
     flex-direction: column;
     align-items: flex-start;
@@ -405,6 +417,102 @@ body.focus-mode .screen {
   body.focus-mode .screen {
     padding: 0;
   }
+}
+
+/* Mobile utilities sheet — the rail's foot actions on small screens */
+
+.sheet {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(100%, 480px);
+  max-width: none;
+  max-height: 80dvh;
+  margin: 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+}
+
+.sheet::backdrop {
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 46%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.sheet[open] {
+  animation: sheet-in var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-decelerate);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+.sheet__inner {
+  padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
+}
+
+.sheet__grab {
+  width: 32px;
+  height: 4px;
+  margin: 0 auto var(--space-3);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-outline-variant);
+}
+
+.sheet__title {
+  padding: 0 var(--space-2) var(--space-2);
+  font: var(--md-sys-typescale-title-large);
+}
+
+.sheet__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sheet__action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  font: var(--md-sys-typescale-label-large);
+  transition: background var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+}
+
+.sheet__action:hover,
+.sheet__action:focus-visible {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.sheet__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.sheet__label {
+  flex: 1;
+}
+
+.sheet__chevron {
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 @media (prefers-reduced-motion: reduce) {

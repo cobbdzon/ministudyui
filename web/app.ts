@@ -53,6 +53,10 @@ function shell() {
     <main class="screen" id="main" tabindex="-1"></main>
     <nav class="bottom-nav" aria-label="Main">
       ${NAV.map((n) => navItem(n, 'bottom-nav__item')).join('')}
+      <button class="bottom-nav__item" type="button" id="more" aria-label="More options" aria-haspopup="dialog" title="Import, shortcuts, and theme">
+        ${icon('more_horiz')}
+        <span>More</span>
+      </button>
     </nav>`;
 }
 
@@ -99,6 +103,80 @@ function openShortcuts() {
       </div>`,
     actions: [{ label: 'Close', value: 'close', variant: 'btn--tonal' }],
   });
+}
+
+/* ---------- More sheet (mobile utilities) ---------- */
+
+let moreSheet = null;
+
+function closeMoreSheet() {
+  if (!moreSheet) return;
+  moreSheet.close();
+}
+
+function themeAction() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  return { next, icon: next === 'dark' ? 'dark_mode' : 'light_mode', label: `Switch to ${next} theme` };
+}
+
+function openMoreSheet() {
+  if (moreSheet) return;
+  const theme = themeAction();
+  const sheet = document.createElement('dialog');
+  sheet.className = 'sheet';
+  sheet.setAttribute('aria-label', 'More options');
+  sheet.innerHTML = `
+    <div class="sheet__inner">
+      <div class="sheet__grab" aria-hidden="true"></div>
+      <h2 class="sheet__title">More options</h2>
+      <div class="sheet__list">
+        <button class="sheet__action" type="button" data-sheet-action="import">
+          <span class="sheet__icon">${icon('upload')}</span>
+          <span class="sheet__label">Import from AI</span>
+          ${icon('chevron_right', 'icon--sm sheet__chevron')}
+        </button>
+        <button class="sheet__action" type="button" data-sheet-action="shortcuts">
+          <span class="sheet__icon">${icon('keyboard')}</span>
+          <span class="sheet__label">Keyboard shortcuts</span>
+          ${icon('chevron_right', 'icon--sm sheet__chevron')}
+        </button>
+        <button class="sheet__action" type="button" data-sheet-action="theme">
+          <span class="sheet__icon">${icon(theme.icon)}</span>
+          <span class="sheet__label">${theme.label}</span>
+          ${icon('chevron_right', 'icon--sm sheet__chevron')}
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  moreSheet = sheet;
+
+  sheet.addEventListener('close', () => {
+    if (moreSheet !== sheet) return;
+    moreSheet = null;
+    sheet.remove();
+    document.getElementById('more')?.focus();
+  });
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet) {
+      closeMoreSheet();
+      return;
+    }
+    const action = e.target.closest('[data-sheet-action]');
+    if (!action) return;
+    const kind = action.dataset.sheetAction;
+    if (kind === 'theme') {
+      applyTheme(themeAction().next);
+      const updated = themeAction();
+      action.querySelector('.sheet__icon').innerHTML = icon(updated.icon);
+      action.querySelector('.sheet__label').textContent = updated.label;
+      return;
+    }
+    closeMoreSheet();
+    if (kind === 'import') importView.openImport(ctx);
+    if (kind === 'shortcuts') openShortcuts();
+  });
+  sheet.showModal();
 }
 
 /* ---------- Router ---------- */
@@ -179,6 +257,7 @@ async function route() {
   cleanup = null;
 
   document.body.classList.remove('focus-mode');
+  closeMoreSheet();
   renderedView = viewId;
   setActiveNav(viewId);
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -237,6 +316,7 @@ document.getElementById('theme-toggle')?.addEventListener('click', () => {
 });
 document.getElementById('shortcuts')?.addEventListener('click', openShortcuts);
 document.getElementById('import')?.addEventListener('click', () => importView.openImport(ctx));
+document.getElementById('more')?.addEventListener('click', openMoreSheet);
 
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
