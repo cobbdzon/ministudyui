@@ -21,10 +21,16 @@ All data lives in a local SQLite database (`data/ministudy.db`).
 
 ```sh
 bun install
-mkdir -p data
+bun run seed
 ```
 
-`data/` is gitignored, so it must be created before the first run.
+`data/` is gitignored. `bun run seed` creates it and migrates the SQLite schema
+without adding any data — use this for a real/initial setup. It only creates
+what's missing, so it's safe to run on every boot and won't touch existing data.
+
+For local exploration, `bun run seed:demo` fills the database with sample decks,
+cards (with review history), quizzes, and attempts. It skips a database that
+already has decks, so re-running it is harmless.
 
 ## Run the web app
 
