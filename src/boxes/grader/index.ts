@@ -1,4 +1,4 @@
-export function gradeAuto(question, response) {
+export function gradeAuto(question: any, response: any): any {
   const ans = typeof question.answer_json === 'string' ? JSON.parse(question.answer_json) : question.answer_json;
   const pts = question.points ?? 1;
   if (question.type === 'mcq') {
@@ -8,9 +8,9 @@ export function gradeAuto(question, response) {
   if (question.type === 'multi') {
     let r;
     try { r = JSON.parse(response); } catch { r = []; }
-    const got = Array.isArray(r) ? r.map(String) : [];
+    const got = Array.isArray(r) ? r.map((x: any) => String(x)) : [];
     const want = (ans.correct || []).map(String);
-    const ok = got.length === want.length && got.every((x) => want.includes(x)) && want.every((x) => got.includes(x));
+    const ok = got.length === want.length && got.every((x: any) => want.includes(x)) && want.every((x: any) => got.includes(x));
     return { status: 'graded', is_correct: ok ? 1 : 0, points: ok ? pts : 0, feedback: ok ? 'Correct.' : 'Incorrect.' };
   }
   if (question.type === 'numeric') {

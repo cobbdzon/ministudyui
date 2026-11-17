@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "ministudyui": {
+        "type": "local",
+        "command": [
+          "bun",
+          "src/mcp/stdio.ts"
+        ]
+      }
+    }
+  }
+}

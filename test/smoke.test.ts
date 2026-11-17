@@ -12,7 +12,7 @@ test('srs again does not increase interval and ordering holds', () => {
   assert.ok(p.hard.endsWith('d'));
   assert.ok(p.good.endsWith('d'));
   assert.ok(p.easy.endsWith('d'));
-  const n = (x) => x === '10m' ? 0 : parseInt(x);
+  const n = (x: any) => x === '10m' ? 0 : parseInt(x);
   assert.ok(n(p.again) <= n(p.hard));
   assert.ok(n(p.hard) <= n(p.good));
   assert.ok(n(p.good) <= n(p.easy));

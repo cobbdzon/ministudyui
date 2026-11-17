@@ -1,28 +1,28 @@
-const { chromium } = require('playwright');
-const fs = require('fs');
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
 
 const BASE = 'http://127.0.0.1:3000';
 const EXEC = '/home/samsepi0l/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome';
 const OUT = '/tmp/opencode/shots';
-fs.mkdirSync(OUT, { recursive: true });
+mkdirSync(OUT, { recursive: true });
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: EXEC });
-  const errors = [];
-  const failed = [];
+  const errors: string[] = [];
+  const failed: string[] = [];
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('requestfailed', (r) => failed.push(`${r.url()} ${r.failure()?.errorText}`));
 
-  async function shot(name, hash, { theme, width, settle = 700 } = {}) {
-    await page.setViewportSize({ width: width || 1280, height: 900 });
+  async function shot(name: string, hash: string, opts: { theme?: string; width?: number; settle?: number } = {}) {
+    await page.setViewportSize({ width: opts.width || 1280, height: 900 });
     await page.goto(`${BASE}/?mock=1${hash}`, { waitUntil: 'networkidle' });
-    if (theme) {
-      await page.evaluate((t) => localStorage.setItem('ministudy.theme', t), theme);
+    if (opts.theme) {
+      await page.evaluate((t) => localStorage.setItem('ministudy.theme', t), opts.theme);
       await page.reload({ waitUntil: 'networkidle' });
     }
-    await page.waitForTimeout(settle);
+    await page.waitForTimeout(opts.settle || 700);
     await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
     console.log('shot', name, '->', hash);
   }

@@ -1,9 +1,9 @@
 import * as store from '../store/index.js';
 import * as srs from '../srs/index.js';
 
-function err(code, message, field) { const e = new Error(message); e.code = code; e.field = field; return e; }
+function err(code: string, message: string, field?: any): any { const e: any = new Error(message); e.code = code; e.field = field; return e; }
 
-export function queue({ deck, limit }) {
+export function queue({ deck, limit }: any): any {
   // resolve deck
   let deckId;
   if (typeof deck === 'number') deckId = deck;
@@ -25,7 +25,7 @@ export function queue({ deck, limit }) {
   }));
 }
 
-export function review({ cardId, rating }) {
+export function review({ cardId, rating }: any): any {
   if (rating < 0 || rating > 3) throw err('VALIDATION', 'rating 0..3', 'rating');
   const state = store.get('SELECT * FROM card_state WHERE card_id=?', [cardId]);
   if (!state) throw err('NOT_FOUND', 'card not found');
@@ -41,7 +41,7 @@ export function review({ cardId, rating }) {
   });
 }
 
-export function undo() {
+export function undo(): any {
   const last = store.get('SELECT * FROM reviews ORDER BY id DESC LIMIT 1');
   if (!last) throw err('NOT_FOUND', 'no review to undo');
   const snap = JSON.parse(last.prev_state_json);
@@ -53,7 +53,7 @@ export function undo() {
   return { ok: true, card_id: last.card_id };
 }
 
-export function stats({ deck, days }) {
+export function stats({ deck, days }: any): any {
   const d = days || 30;
   let deckId = null;
   if (deck !== undefined) {
@@ -69,7 +69,7 @@ export function stats({ deck, days }) {
   return { total, due, reviews_per_day: rpd };
 }
 
-export function deckSummaries() {
+export function deckSummaries(): any {
   const decks = store.all('SELECT * FROM decks ORDER BY name');
   return decks.map((d) => {
     const total = store.get('SELECT COUNT(*) AS n FROM cards WHERE deck_id=?', [d.id]).n;

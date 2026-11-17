@@ -2,9 +2,9 @@ import * as store from '../store/index.js';
 import * as library from '../library/index.js';
 import { gradeAuto } from '../grader/index.js';
 
-function err(code, message, field) { const e = new Error(message); e.code = code; e.field = field; return e; }
+function err(code: string, message: string, field?: any): any { const e: any = new Error(message); e.code = code; e.field = field; return e; }
 
-export function start({ quizId }) {
+export function start({ quizId }: any): any {
   const quiz = store.get('SELECT * FROM quizzes WHERE id=?', [quizId]);
   if (!quiz) throw err('NOT_FOUND', 'quiz not found');
   const qs = store.all('SELECT points FROM questions WHERE quiz_id=?', [quizId]);
@@ -13,7 +13,7 @@ export function start({ quizId }) {
   return { id: r.lastInsertRowid, quiz_id: quizId, status: 'in_progress', max_score: maxScore };
 }
 
-export function answer({ attemptId, questionId, response }) {
+export function answer({ attemptId, questionId, response }: any): any {
   const att = store.get('SELECT * FROM attempts WHERE id=?', [attemptId]);
   if (!att) throw err('NOT_FOUND', 'attempt not found');
   if (att.status !== 'in_progress') throw err('CONFLICT', 'attempt not in progress');
@@ -31,7 +31,7 @@ export function answer({ attemptId, questionId, response }) {
   return { ok: true, answer_id: r.lastInsertRowid };
 }
 
-export function submit({ attemptId }) {
+export function submit({ attemptId }: any): any {
   const att = store.get('SELECT * FROM attempts WHERE id=?', [attemptId]);
   if (!att) throw err('NOT_FOUND', 'attempt not found');
   // auto-grade any pending mcq/numeric that were answered via answer() already graded; ensure all questions have answer rows? We'll grade on submit for any missing? Spec: student answers; submit just finalizes.
@@ -60,7 +60,7 @@ export function submit({ attemptId }) {
   return { ok: true, attempt: { id: attemptId, status, score, max_score: att.max_score } };
 }
 
-export function gradeAnswer({ answerId, points, feedback }) {
+export function gradeAnswer({ answerId, points, feedback }: any): any {
   const a = store.get('SELECT * FROM answers WHERE id=?', [answerId]);
   if (!a) throw err('NOT_FOUND', 'answer not found');
   const q = store.get('SELECT * FROM questions WHERE id=?', [a.question_id]);
@@ -80,7 +80,7 @@ export function gradeAnswer({ answerId, points, feedback }) {
   return { ok: true, answer: { id: answerId }, attempt: { id: att.id, status, score, max_score: att.max_score } };
 }
 
-export function pending({ limit }) {
+export function pending({ limit }: any): any {
   const lim = Math.min(Math.max(limit || 20, 1), 50);
   const rows = store.all(
     `SELECT a.id AS answer_id, a.attempt_id, q.type AS question_type, q.prompt, q.answer_json, q.points AS max_points, a.response
@@ -94,10 +94,10 @@ export function pending({ limit }) {
   });
 }
 
-export function list({ status, quizId, limit }) {
+export function list({ status, quizId, limit }: any): any {
   const lim = Math.min(Math.max(limit || 20, 1), 100);
   let sql = 'SELECT * FROM attempts WHERE 1=1';
-  const params = [];
+  const params: any[] = [];
   if (status) { sql += ' AND status=?'; params.push(status); }
   if (quizId) { sql += ' AND quiz_id=?'; params.push(quizId); }
   sql += ' ORDER BY id DESC LIMIT ?';

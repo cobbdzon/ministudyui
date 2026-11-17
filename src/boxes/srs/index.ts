@@ -1,18 +1,18 @@
 const Q = [0, 3, 4, 5];
 
-function addDays(iso, days) {
+function addDays(iso: string, days: number): string {
   const d = new Date(iso);
   d.setTime(d.getTime() + days * 86400000);
   return d.toISOString().replace(/\.\d{3}Z$/, (m) => m) ; // keep ms
 }
 
-function fmt(days) {
+function fmt(days: number): string {
   if (days <= 0) return '10m';
   if (days < 1) return Math.round(days * 1440) + 'm';
   return Math.round(days) + 'd';
 }
 
-export function schedule(state, rating, now) {
+export function schedule(state: any, rating: number, now?: string): any {
   now = now || new Date().toISOString();
   const s = { ease: state.ease ?? 2.5, interval_days: state.interval_days ?? 0, reps: state.reps ?? 0, lapses: state.lapses ?? 0 };
   if (rating === 0) {
@@ -43,9 +43,9 @@ export function schedule(state, rating, now) {
   };
 }
 
-export function preview(state, now) {
+export function preview(state: any, now?: string): any {
   now = now || new Date().toISOString();
-  const res = {};
+  const res: any = {};
   const labels = ['again', 'hard', 'good', 'easy'];
   for (let r = 0; r < 4; r++) {
     const ns = schedule(state, r, now);

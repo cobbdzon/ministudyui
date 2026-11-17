@@ -15,25 +15,25 @@ const WEB = path.join(ROOT, 'web');
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '127.0.0.1';
 
-function send(res, status, obj) {
+function send(res: any, status: number, obj: any) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
 }
-function errRes(res, e) {
+function errRes(res: any, e: any) {
   const status = e.code === 'NOT_FOUND' ? 404 : e.code === 'VALIDATION' ? 400 : e.code === 'CONFLICT' ? 409 : 500;
   send(res, status, { code: e.code || 'ERROR', message: e.message, field: e.field, hint: e.hint });
 }
-function parseBody(req) {
+function parseBody(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 1e6) reject(new Error('too large')); });
+    req.on('data', (c: any) => { data += c; if (data.length > 1e6) reject(new Error('too large')); });
     req.on('end', () => {
       if (!data) return resolve({});
       try { resolve(JSON.parse(data)); } catch { reject(new Error('bad json')); }
     });
   });
 }
-function securityOk(req) {
+function securityOk(req: any): boolean {
   const host = req.headers.host || '';
   if (host !== `${HOST}:${PORT}` && host !== `localhost:${PORT}`) return false;
   const origin = req.headers.origin;
@@ -41,7 +41,7 @@ function securityOk(req) {
   return true;
 }
 
-function route(req, res) {
+function route(req: any, res: any) {
   if (!securityOk(req)) { send(res, 403, { code: 'FORBIDDEN', message: 'bad host/origin' }); return; }
   let url;
   try { url = new URL(req.url, `http://${HOST}:${PORT}`); } catch { url = new URL('/', `http://${HOST}:${PORT}`); }
@@ -61,9 +61,26 @@ function route(req, res) {
   // static
   if (method === 'GET' && !p.startsWith('/api/')) {
     let fp = path.join(WEB, p === '/' ? 'index.html' : p);
-    if (!fs.existsSync(fp) || fs.statSync(fp).isDirectory()) fp = path.join(WEB, 'index.html');
+    if (!fs.existsSync(fp) || fs.statSync(fp).isDirectory()) {
+      // try TypeScript source for a requested .js module
+      if (p.endsWith('.js')) {
+        const tsPath = path.join(WEB, p.replace(/\.js$/, '.ts'));
+        if (fs.existsSync(tsPath)) fp = tsPath;
+        else fp = path.join(WEB, 'index.html');
+      } else {
+        fp = path.join(WEB, 'index.html');
+      }
+    }
     const ext = path.extname(fp);
-    const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.json': 'application/json' };
+    if (ext === '.ts') {
+      const source = fs.readFileSync(fp, 'utf8');
+      const transpiler = new Bun.Transpiler({ loader: 'ts' });
+      const code = transpiler.transformSync(source);
+      res.writeHead(200, { 'Content-Type': 'text/javascript' });
+      res.end(code);
+      return;
+    }
+    const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.json': 'application/json' };
     res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
     fs.createReadStream(fp).pipe(res);
     return;
@@ -87,7 +104,7 @@ function route(req, res) {
       // Cards
       if (method === 'GET' && p === '/api/cards') {
         const q = url.searchParams;
-        return send(res, 200, library.cardSearch({ query: q.get('q') || undefined, deck: q.get('deck') ? (isNaN(q.get('deck')) ? q.get('deck') : Number(q.get('deck'))) : undefined, tag: q.get('tag') || undefined, source: q.get('source') || undefined, limit: Number(q.get('limit')) || 20, offset: Number(q.get('offset')) || 0 }));
+        return send(res, 200, library.cardSearch({ query: q.get('q') || undefined, deck: q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined, tag: q.get('tag') || undefined, source: q.get('source') || undefined, limit: Number(q.get('limit') || 0) || 20, offset: Number(q.get('offset') || 0) || 0 }));
       }
       if (method === 'POST' && p === '/api/cards') {
         const b = await parseBody(req);
@@ -108,8 +125,8 @@ function route(req, res) {
       // Review
       if (method === 'GET' && p === '/api/review/queue') {
         const q = url.searchParams;
-        const deck = isNaN(q.get('deck')) ? q.get('deck') : Number(q.get('deck'));
-        return send(res, 200, { cards: study.queue({ deck, limit: Number(q.get('limit')) || 10 }) });
+        const deck = isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0);
+        return send(res, 200, { cards: study.queue({ deck, limit: Number(q.get('limit') || 0) || 10 }) });
       }
       if (method === 'POST' && p === '/api/review') {
         const b = await parseBody(req);
@@ -122,8 +139,8 @@ function route(req, res) {
       // Quizzes
       if (method === 'GET' && p === '/api/quizzes') {
         const q = url.searchParams;
-        const deck = q.get('deck') ? (isNaN(q.get('deck')) ? q.get('deck') : Number(q.get('deck'))) : undefined;
-        return send(res, 200, { quizzes: library.quizList({ deck, limit: Number(q.get('limit')) || 50 }) });
+        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined;
+        return send(res, 200, { quizzes: library.quizList({ deck, limit: Number(q.get('limit') || 0) || 50 }) });
       }
       if (method === 'GET' && /^\/api\/quizzes\/\d+$/.test(p)) {
         const id = Number(p.split('/')[3]);
@@ -149,7 +166,7 @@ function route(req, res) {
       }
       if (method === 'GET' && p === '/api/attempts') {
         const q = url.searchParams;
-        return send(res, 200, { attempts: attempts.list({ status: q.get('status') || undefined, quizId: q.get('quiz_id') ? Number(q.get('quiz_id')) : undefined, limit: Number(q.get('limit')) || 20 }) });
+        return send(res, 200, { attempts: attempts.list({ status: q.get('status') || undefined, quizId: q.get('quiz_id') ? Number(q.get('quiz_id') || 0) : undefined, limit: Number(q.get('limit') || 0) || 20 }) });
       }
       if (method === 'GET' && /^\/api\/attempts\/\d+$/.test(p)) {
         const id = Number(p.split('/')[3]);
@@ -172,7 +189,7 @@ function route(req, res) {
       // Grading
       if (method === 'GET' && p === '/api/grading/pending') {
         const q = url.searchParams;
-        return send(res, 200, { answers: attempts.pending({ limit: Number(q.get('limit')) || 20 }) });
+        return send(res, 200, { answers: attempts.pending({ limit: Number(q.get('limit') || 0) || 20 }) });
       }
       if (method === 'POST' && /^\/api\/grading\/\d+$/.test(p)) {
         const id = Number(p.split('/')[3]);
@@ -183,8 +200,8 @@ function route(req, res) {
       // Stats
       if (method === 'GET' && p === '/api/stats') {
         const q = url.searchParams;
-        const deck = q.get('deck') ? (isNaN(q.get('deck')) ? q.get('deck') : Number(q.get('deck'))) : undefined;
-        return send(res, 200, study.stats({ deck, days: Number(q.get('days')) || 30 }));
+        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined;
+        return send(res, 200, study.stats({ deck, days: Number(q.get('days') || 0) || 30 }));
       }
       // latex validate (for UI)
       if (method === 'POST' && p === '/api/latex/validate') {

@@ -1,7 +1,7 @@
 import katex from 'katex';
 
-function findSpans(text) {
-  const spans = [];
+function findSpans(text: string): any[] {
+  const spans: any[] = [];
   // $$...$$ first
   const re2 = /\$\$([\s\S]+?)\$\$/g;
   let m;
@@ -12,14 +12,14 @@ function findSpans(text) {
   return spans;
 }
 
-export function validate(sources) {
+export function validate(sources: any[]): any[] {
   return sources.map((src, index) => {
     const spans = findSpans(src);
-    const errors = [];
+    const errors: any[] = [];
     for (const sp of spans) {
       try {
         katex.renderToString(sp.expr, { throwOnError: true, displayMode: false });
-      } catch (e) {
+      } catch (e: any) {
         errors.push({ span: sp.expr.slice(0, 80), message: String(e.message || e) });
       }
     }

@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "bun src/http/server.js",
-    "mcp": "bun src/mcp/stdio.js",
+    "start": "bun src/http/server.ts",
+    "mcp": "bun src/mcp/stdio.ts",
     "test": "bun test",
-    "seed": "bun scripts/seed.js",
+    "typecheck": "tsc --noEmit",
     "sass": "sass --watch web/scss:web/css --no-source-map",
-    "dev": "bun --watch src/http/server.js & bun run sass"
+    "dev": "bun --watch src/http/server.ts & bun run sass"
   },
   "engines": {
     "bun": ">=1.0.0"
@@ -18,7 +18,10 @@
     "katex": "^0.19.1"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6",
     "playwright": "^1.65.1",
-    "sass": "^1.108.2"
+    "sass": "^1.108.2",
+    "typescript": "^7.0.2"
   }
 }
