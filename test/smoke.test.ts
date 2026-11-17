@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as srs from '../src/boxes/srs/index.js';
 import { gradeAuto } from '../src/boxes/grader/index.js';
+import * as store from '../src/boxes/store/index.js';
+import * as library from '../src/boxes/library/index.js';
 
 test('srs again does not increase interval and ordering holds', () => {
   const st = { ease: 2.5, interval_days: 3, reps: 2, lapses: 0 };
@@ -24,4 +26,37 @@ test('grader numeric tolerance', () => {
   assert.equal(gradeAuto(q, '10').is_correct, 0);
   const q2 = { type: 'mcq', answer_json: { correct: 'b' }, points: 1 };
   assert.equal(gradeAuto(q2, 'b').points, 1);
+});
+
+test('deckUpdate renames, preserves fields on partial update, and rejects conflicts', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const a = library.deckCreate({ name: 'Alpha', description: 'First' });
+    const b = library.deckCreate({ name: 'Beta', description: 'Second' });
+
+    const renamed = library.deckUpdate({ deck: a.id, name: 'Gamma' });
+    assert.equal(renamed.ok, true);
+    assert.equal(renamed.deck.name, 'Gamma');
+    assert.equal(renamed.deck.description, 'First');
+
+    const partial = library.deckUpdate({ deck: a.id, description: 'Updated' });
+    assert.equal(partial.deck.name, 'Gamma');
+    assert.equal(partial.deck.description, 'Updated');
+
+    const listed = library.deckList().find((d: any) => d.id === a.id);
+    assert.equal(listed.name, 'Gamma');
+    assert.equal(listed.description, 'Updated');
+
+    assert.throws(
+      () => library.deckUpdate({ deck: a.id, name: 'beta' }),
+      (e: any) => e.code === 'CONFLICT' && e.field === 'name'
+    );
+    assert.throws(
+      () => library.deckUpdate({ deck: b.id }),
+      (e: any) => e.code === 'VALIDATION'
+    );
+  } finally {
+    store.close();
+  }
 });

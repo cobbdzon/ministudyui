@@ -89,6 +89,7 @@ export async function mount(el, ctx) {
           </div>
         </div>
         <div class="page-actions">
+          <button class="btn btn--outlined" id="rename-deck">${icon('edit')}Rename</button>
           <a class="btn btn--filled" href="#/review/${esc(String(deckId ?? ''))}">
             ${icon('play_arrow')}${deckDue ? `Review ${deckDue} due` : 'Start review'}
           </a>
@@ -210,6 +211,7 @@ export async function mount(el, ctx) {
   }
 
   function bindShell() {
+    el.querySelector('#rename-deck')?.addEventListener('click', openRenameDeck);
     el.querySelector('#card-search')?.addEventListener('input', (e) => {
       query = e.target.value;
       renderList();
@@ -294,6 +296,45 @@ export async function mount(el, ctx) {
     schedulePreview();
     updateDirtyUi();
     renderTags();
+  }
+
+  function openRenameDeck() {
+    if (!deck) return;
+    dialog({
+      title: 'Rename deck',
+      body: `
+        <label class="field">
+          <span class="field__label">Deck name</span>
+          <input class="input" id="deck-rename-name" maxlength="120" autocomplete="off" value="${esc(deck.name)}">
+        </label>`,
+      actions: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Save name', value: 'rename', variant: 'btn--filled' },
+      ],
+      onMount(root) {
+        const input = root.querySelector('#deck-rename-name');
+        input?.focus();
+        input?.select();
+        root.addEventListener('submit', async (e) => {
+          if (e.submitter?.value !== 'rename') return;
+          const name = input.value.trim();
+          if (!name) {
+            toast('Give the deck a name first', { type: 'error' });
+            return;
+          }
+          if (name === deck.name) return;
+          try {
+            await ctx.api.updateDeck(deckId, { name });
+            deck.name = name;
+            const title = el.querySelector('.page-title');
+            if (title) title.textContent = name;
+            toast(`Deck renamed to “${name}”`);
+          } catch (err) {
+            toast(err.message || 'Could not rename the deck', { type: 'error' });
+          }
+        });
+      },
+    });
   }
 
   function renderTags() {

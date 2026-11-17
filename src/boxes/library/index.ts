@@ -40,6 +40,25 @@ export function deckDelete({ deck, confirmName }: any): any {
   return { ok: true };
 }
 
+export function deckUpdate({ deck, name, description }: any): any {
+  if (deck === undefined || deck === null) throw err('VALIDATION', 'deck required', 'deck');
+  if (name === undefined && description === undefined) throw err('VALIDATION', 'name or description required');
+  if (name !== undefined && (typeof name !== 'string' || name.length < 1 || name.length > 120))
+    throw err('VALIDATION', 'name length', 'name');
+  if (description !== undefined && (typeof description !== 'string' || description.length > 2000))
+    throw err('VALIDATION', 'description too long', 'description');
+  const d = resolveDeck(deck);
+  const newName = name !== undefined ? name : d.name;
+  const newDescription = description !== undefined ? description : d.description;
+  try {
+    store.run('UPDATE decks SET name=?, description=? WHERE id=?', [newName, newDescription, d.id]);
+  } catch (e: any) {
+    if (String(e.message).includes('UNIQUE')) throw err('CONFLICT', 'deck name exists', 'name');
+    throw e;
+  }
+  return { ok: true, deck: { id: d.id, name: newName, description: newDescription } };
+}
+
 export function cardAdd({ deck, cards }: any): any {
   if (!Array.isArray(cards) || cards.length < 1 || cards.length > 100) throw err('VALIDATION', 'cards array 1..100', 'cards');
   const d = resolveDeck(deck);

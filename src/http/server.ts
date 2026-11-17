@@ -101,6 +101,12 @@ function route(req: any, res: any) {
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
         return send(res, 200, library.deckDelete({ deck: id, confirmName: b.confirm_name }));
       }
+      if (method === 'PATCH' && /^\/api\/decks\/\d+$/.test(p)) {
+        const id = Number(p.split('/')[3]);
+        const b = await parseBody(req);
+        if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
+        return send(res, 200, library.deckUpdate({ deck: id, name: b.name, description: b.description }));
+      }
       // Cards
       if (method === 'GET' && p === '/api/cards') {
         const q = url.searchParams;

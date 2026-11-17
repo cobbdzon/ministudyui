@@ -81,8 +81,8 @@ bun run mcp
 
 The server speaks MCP over stdio and stores data in the same SQLite file
 (default `data/ministudy.db`, overridable with `DB_PATH`). It exposes tools
-such as `deck_create`, `deck_list`, `card_add`, `card_search`,
-`quiz_create`, `study_next_due`, `study_stats`, `attempt_list`,
+such as `deck_create`, `deck_list`, `deck_update`, `card_add`,
+`card_search`, `quiz_create`, `study_next_due`, `study_stats`, `attempt_list`,
 `attempts_pending_grading`, `answer_grade`, and `latex_validate`.
 
 ## Running with OpenCode

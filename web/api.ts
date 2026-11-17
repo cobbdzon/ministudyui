@@ -51,6 +51,12 @@ const real = {
       body: JSON.stringify({ confirm_name: confirmName }),
     });
   },
+  updateDeck(id, patch) {
+    return req(`/api/decks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  },
 
   async cards({ deck, q, tag, source, limit = 100, offset = 0 } = {}) {
     const params = new URLSearchParams();

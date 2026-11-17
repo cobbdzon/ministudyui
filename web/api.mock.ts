@@ -543,6 +543,18 @@ const api = {
     return Promise.resolve({ ok: true, deck: clone(deck) });
   },
 
+  updateDeck(id, patch) {
+    const deck = resolveDeck(isNaN(id) ? id : Number(id));
+    if (patch.name !== undefined) {
+      const name = String(patch.name).trim();
+      if (!name) fail('name is required');
+      if (decks.some((d) => d.id !== deck.id && d.name.toLowerCase() === name.toLowerCase())) fail('deck name exists');
+      deck.name = name;
+    }
+    if (patch.description !== undefined) deck.description = patch.description;
+    return Promise.resolve({ ok: true, deck: clone(deck) });
+  },
+
   cards({ deck } = {}) {
     let rows = cards;
     if (deck !== undefined && deck !== null && deck !== '') {

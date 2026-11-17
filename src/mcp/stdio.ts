@@ -24,6 +24,7 @@ const Latex = z.string().min(1).max(4000);
 server.registerTool('deck_create', { description: 'Create a deck', inputSchema: { name: z.string().min(1).max(120), description: z.string().max(2000).optional() } }, wrap((a: any) => library.deckCreate(a)));
 server.registerTool('deck_list', { description: 'List decks', inputSchema: {} }, wrap(() => ({ decks: library.deckList() })));
 server.registerTool('deck_delete', { description: 'Delete a deck', inputSchema: { deck: DeckRef, confirm_name: z.string() } }, wrap((a: any) => library.deckDelete({ deck: a.deck, confirmName: a.confirm_name })));
+server.registerTool('deck_update', { description: 'Rename a deck and/or edit its description (provide at least one)', inputSchema: { deck: DeckRef, name: z.string().min(1).max(120).optional(), description: z.string().max(2000).optional() } }, wrap((a: any) => library.deckUpdate({ deck: a.deck, name: a.name, description: a.description })));
 
 server.registerTool('card_add', { description: 'Add cards', inputSchema: { deck: DeckRef, cards: z.array(z.object({ front: Latex, back: Latex, tags: Tags })).min(1).max(100) } }, wrap((a: any) => library.cardAdd(a)));
 server.registerTool('card_update', { description: 'Update a card', inputSchema: { card_id: Id, front: Latex.optional(), back: Latex.optional(), tags: Tags, deck: DeckRef.optional() } }, wrap((a: any) => library.cardUpdate({ cardId: a.card_id, front: a.front, back: a.back, tags: a.tags, deck: a.deck })));

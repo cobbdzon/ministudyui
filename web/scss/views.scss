@@ -219,6 +219,26 @@
   grid-template-columns: minmax(0, 1fr) 132px 150px 24px;
 }
 
+.deck-list .list__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  overflow: visible;
+}
+
+.deck-list .list__title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deck-list .deck-list__edit {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: -2px 0;
+}
+
 .deck-row__meter {
   display: flex;
   flex-direction: column;

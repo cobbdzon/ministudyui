@@ -37,7 +37,10 @@ export async function mount(el, ctx) {
     const learning = Math.max((Number(d.total) || 0) - (Number(d.new) || 0) - (Number(d.mature) || 0), 0);
     return `<a class="list__row" href="#/deck/${d.id}">
       <span class="list__main">
-        <span class="list__title">${esc(d.name)}</span>
+        <span class="list__title">
+          <span class="list__title-text">${esc(d.name)}</span>
+          <button class="icon-btn icon-btn--sm deck-list__edit" data-rename="${d.id}" title="Rename deck" aria-label="Rename ${esc(d.name)}">${icon('edit')}</button>
+        </span>
         <span class="list__desc">${esc(d.description || 'No description')}</span>
       </span>
       <span class="deck-row__meter">
@@ -171,7 +174,7 @@ export async function mount(el, ctx) {
         </aside>
       </div>`;
 
-    bind();
+    bind(decks);
   }
 
   async function refresh() {
@@ -227,9 +230,53 @@ export async function mount(el, ctx) {
     });
   }
 
-  function bind() {
+  function openRenameDeck(deck) {
+    dialog({
+      title: 'Rename deck',
+      body: `
+        <label class="field">
+          <span class="field__label">Deck name</span>
+          <input class="input" id="deck-rename-name" maxlength="120" autocomplete="off" value="${esc(deck.name)}">
+        </label>`,
+      actions: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Save name', value: 'rename', variant: 'btn--filled' },
+      ],
+      onMount(root) {
+        const input = root.querySelector('#deck-rename-name');
+        input?.focus();
+        input?.select();
+        root.addEventListener('submit', async (e) => {
+          if (e.submitter?.value !== 'rename') return;
+          const name = input.value.trim();
+          if (!name) {
+            ctx.toast('Give the deck a name first', { type: 'error' });
+            return;
+          }
+          if (name === deck.name) return;
+          try {
+            await ctx.api.updateDeck(deck.id, { name });
+            ctx.toast(`Deck renamed to “${name}”`);
+            await refresh();
+          } catch (err) {
+            ctx.toast(err.message || 'Could not rename the deck', { type: 'error' });
+          }
+        });
+      },
+    });
+  }
+
+  function bind(decks) {
     el.querySelector('#new-deck')?.addEventListener('click', openNewDeck);
     el.querySelector('#new-deck-empty')?.addEventListener('click', openNewDeck);
+    el.querySelectorAll('[data-rename]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const deck = decks.find((d) => String(d.id) === String(btn.dataset.rename));
+        if (deck) openRenameDeck(deck);
+      });
+    });
   }
 
   el.innerHTML = `<div aria-busy="true">
