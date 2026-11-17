@@ -60,3 +60,55 @@ test('deckUpdate renames, preserves fields on partial update, and rejects confli
     store.close();
   }
 });
+
+test('quiz editing updates only supplied fields and preserves answer keys', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const d = library.deckCreate({ name: 'EditDeck' });
+    const quiz = library.quizCreate({
+      title: 'Original title',
+      description: 'Original description',
+      deck: d.id,
+      questions: [
+        { type: 'mcq', prompt: 'First?', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'b', points: 2 },
+        { type: 'numeric', prompt: 'Second?', value: 5, tolerance: 0.1, unit: 'm', points: 1 },
+      ],
+    });
+    const outline = library.quizOutline({ quizId: quiz.id });
+    assert.equal(outline.questions.length, 2);
+    const [q1, q2] = outline.questions;
+
+    const updated = library.questionUpdate({ questions: [
+      { questionId: q1.id, prompt: 'First (edited)?' },
+      { questionId: q2.id, value: 7 },
+    ] });
+    assert.equal(updated.question_ids.length, 2);
+    const after = library.quizGet({ quizId: quiz.id, includeAnswers: true });
+    assert.equal(after.questions[0].prompt, 'First (edited)?');
+    assert.equal(after.questions[0].choices.length, 2);
+    assert.deepEqual(after.questions[0].answer, { correct: 'b' });
+    assert.equal(after.questions[0].points, 2);
+    assert.deepEqual(after.questions[1].answer, { value: 7, tolerance: 0.1, tolerance_type: 'abs', unit: 'm' });
+
+    library.quizUpdate({ quizId: quiz.id, title: 'New title' });
+    const meta = library.quizList({}).find((q: any) => q.id === quiz.id);
+    assert.equal(meta.title, 'New title');
+    assert.equal(meta.description, 'Original description');
+
+    library.questionDelete({ questionIds: [q1.id] });
+    const left = library.quizGet({ quizId: quiz.id, includeAnswers: false });
+    assert.equal(left.questions.length, 1);
+    assert.equal(left.questions[0].id, q2.id);
+    assert.equal(left.questions[0].position, 1);
+
+    assert.throws(
+      () => library.quizDelete({ quizId: quiz.id, confirmTitle: 'wrong' }),
+      (e: any) => e.code === 'VALIDATION'
+    );
+    assert.equal(library.quizDelete({ quizId: quiz.id, confirmTitle: 'New title' }).ok, true);
+    assert.equal(library.quizList({}).length, 0);
+  } finally {
+    store.close();
+  }
+});

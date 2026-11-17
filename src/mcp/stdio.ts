@@ -39,10 +39,33 @@ const Question = z.discriminatedUnion('type', [
   z.object({ type: z.enum(['short','latex']), prompt: Latex, explanation: z.string().max(4000).optional(), points: z.number().positive().max(100).optional(), reference: z.string().min(1).max(4000), rubric: z.string().max(2000).optional() }),
 ]);
 
+// Partial patch: only fields provided are changed; everything else is kept from storage.
+const QuestionPatch = z.object({
+  question_id: Id,
+  type: z.enum(['mcq','multi','numeric','short','latex']).optional(),
+  position: z.number().int().min(1).optional(),
+  prompt: Latex.optional(),
+  explanation: z.string().max(4000).optional(),
+  points: z.number().positive().max(100).optional(),
+  choices: z.array(Choice).min(2).max(8).optional(),
+  correct: z.union([z.string(), z.array(z.string()).min(1)]).optional(),
+  value: z.number().optional(),
+  tolerance: z.number().min(0).optional(),
+  tolerance_type: z.enum(['abs','rel']).optional(),
+  unit: z.string().max(20).optional(),
+  reference: z.string().min(1).max(4000).optional(),
+  rubric: z.string().max(2000).optional(),
+});
+
 server.registerTool('quiz_create', { description: 'Create quiz', inputSchema: { title: z.string().min(1).max(200), description: z.string().max(2000).optional(), deck: DeckRef.optional(), questions: z.array(Question).min(1).max(100) } }, wrap((a: any) => library.quizCreate(a)));
 server.registerTool('quiz_add_questions', { description: 'Add questions', inputSchema: { quiz_id: Id, questions: z.array(Question).min(1).max(100) } }, wrap((a: any) => library.quizAddQuestions({ quizId: a.quiz_id, questions: a.questions })));
 server.registerTool('quiz_get', { description: 'Get quiz', inputSchema: { quiz_id: Id, include_answers: z.boolean().default(true) } }, wrap((a: any) => library.quizGet({ quizId: a.quiz_id, includeAnswers: a.include_answers })));
 server.registerTool('quiz_list', { description: 'List quizzes', inputSchema: { deck: DeckRef.optional(), limit: z.number().int().min(1).max(100).default(50) } }, wrap((a: any) => ({ quizzes: library.quizList(a) })));
+server.registerTool('quiz_update', { description: 'Edit a quiz title, description, deck or source (only provided fields change)', inputSchema: { quiz_id: Id, title: z.string().min(1).max(200).optional(), description: z.string().max(2000).optional(), deck: DeckRef.optional(), source: z.enum(['user','ai','import']).optional() } }, wrap((a: any) => library.quizUpdate({ quizId: a.quiz_id, title: a.title, description: a.description, deck: a.deck, source: a.source })));
+server.registerTool('quiz_delete', { description: 'Delete a quiz and its questions', inputSchema: { quiz_id: Id, confirm_title: z.string() } }, wrap((a: any) => library.quizDelete({ quizId: a.quiz_id, confirmTitle: a.confirm_title })));
+server.registerTool('quiz_outline', { description: 'List question ids, positions and types of a quiz without loading prompts or answers', inputSchema: { quiz_id: Id } }, wrap((a: any) => library.quizOutline({ quizId: a.quiz_id })));
+server.registerTool('question_update', { description: 'Edit existing questions in bulk by id; only provided fields change', inputSchema: { questions: z.array(QuestionPatch).min(1).max(100) } }, wrap((a: any) => library.questionUpdate({ questions: a.questions.map((q: any) => { const { question_id, ...patch } = q; return { questionId: question_id, ...patch }; }) })));
+server.registerTool('question_delete', { description: 'Delete questions by id and renumber the remaining ones', inputSchema: { question_ids: z.array(Id).min(1).max(100), renumber: z.boolean().default(true) } }, wrap((a: any) => library.questionDelete({ questionIds: a.question_ids, renumber: a.renumber })));
 
 server.registerTool('study_next_due', { description: 'Next due cards', inputSchema: { deck: DeckRef, limit: z.number().int().min(1).max(50).default(10) } }, wrap((a: any) => ({ cards: study.queue(a) })));
 server.registerTool('study_stats', { description: 'Study stats', inputSchema: { deck: DeckRef.optional(), days: z.number().int().min(1).max(365).default(30) } }, wrap((a: any) => study.stats(a)));

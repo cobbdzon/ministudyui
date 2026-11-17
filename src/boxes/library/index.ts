@@ -192,3 +192,115 @@ export function quizList({ deck, limit }: any): any {
   }
   return store.all('SELECT * FROM quizzes ORDER BY id LIMIT ?', [lim]);
 }
+
+function getQuiz(quizId: any): any {
+  const quiz = store.get('SELECT * FROM quizzes WHERE id=?', [quizId]);
+  if (!quiz) throw err('NOT_FOUND', 'quiz not found');
+  return quiz;
+}
+
+function getQuestion(questionId: any): any {
+  const q = store.get('SELECT * FROM questions WHERE id=?', [questionId]);
+  if (!q) throw err('NOT_FOUND', 'question not found');
+  return q;
+}
+
+export function quizUpdate({ quizId, title, description, deck, source }: any): any {
+  const quiz = getQuiz(quizId);
+  if (title !== undefined && (typeof title !== 'string' || title.length < 1 || title.length > 200))
+    throw err('VALIDATION', 'title length', 'title');
+  if (description !== undefined && (typeof description !== 'string' || description.length > 2000))
+    throw err('VALIDATION', 'description too long', 'description');
+  if (source !== undefined && !['user', 'ai', 'import'].includes(source))
+    throw err('VALIDATION', 'source', 'source');
+  const deckId = deck !== undefined ? resolveDeck(deck).id : quiz.deck_id;
+  const newTitle = title !== undefined ? title : quiz.title;
+  const newDescription = description !== undefined ? description : quiz.description;
+  const newSource = source !== undefined ? source : quiz.source;
+  store.run('UPDATE quizzes SET title=?, description=?, deck_id=?, source=? WHERE id=?',
+    [newTitle, newDescription, deckId, newSource, quizId]);
+  return { ok: true, quiz: { id: quiz.id, title: newTitle, description: newDescription, deck_id: deckId, source: newSource } };
+}
+
+export function quizDelete({ quizId, confirmTitle }: any): any {
+  const quiz = getQuiz(quizId);
+  if (confirmTitle !== quiz.title) throw err('VALIDATION', 'confirm_title mismatch', 'confirm_title');
+  store.run('DELETE FROM quizzes WHERE id=?', [quizId]);
+  return { ok: true };
+}
+
+export function quizOutline({ quizId }: any): any {
+  const quiz = getQuiz(quizId);
+  const questions = store.all('SELECT id, position, type FROM questions WHERE quiz_id=? ORDER BY position', [quizId]);
+  return { quiz: { id: quiz.id, title: quiz.title, question_count: questions.length }, questions };
+}
+
+export function questionUpdate({ questions }: any): any {
+  if (!Array.isArray(questions) || questions.length < 1 || questions.length > 100)
+    throw err('VALIDATION', 'questions array 1..100', 'questions');
+
+  const updates = questions.map((p: any, i: number) => {
+    if (!p || p.questionId === undefined) throw err('VALIDATION', 'question_id required', `questions[${i}].question_id`);
+    const row = getQuestion(p.questionId);
+    const oldAnswer = JSON.parse(row.answer_json);
+    const oldChoices = row.choices_json ? JSON.parse(row.choices_json) : null;
+
+    // Merge the patch over the stored values so callers only send fields they change.
+    const merged: any = {
+      type: p.type ?? row.type,
+      prompt: p.prompt ?? row.prompt,
+      explanation: p.explanation ?? row.explanation,
+      points: p.points ?? row.points,
+      choices: p.choices ?? oldChoices ?? undefined,
+      correct: p.correct !== undefined ? p.correct : oldAnswer.correct,
+      value: p.value !== undefined ? p.value : oldAnswer.value,
+      tolerance: p.tolerance !== undefined ? p.tolerance : oldAnswer.tolerance,
+      tolerance_type: p.tolerance_type ?? oldAnswer.tolerance_type,
+      unit: p.unit !== undefined ? p.unit : oldAnswer.unit,
+      reference: p.reference !== undefined ? p.reference : oldAnswer.reference,
+      rubric: p.rubric !== undefined ? p.rubric : oldAnswer.rubric,
+    };
+    if (merged.unit == null) delete merged.unit;
+    if (merged.rubric == null) delete merged.rubric;
+    if (merged.tolerance === undefined) delete merged.tolerance;
+    if (merged.tolerance_type == null) delete merged.tolerance_type;
+
+    const valid = validateQuestion(merged, i);
+    return {
+      id: row.id,
+      position: p.position ?? row.position,
+      type: valid.type,
+      prompt: valid.prompt,
+      choices: valid.choices,
+      answer: valid.answer,
+      explanation: valid.explanation,
+      points: valid.points,
+    };
+  });
+
+  store.tx(() => {
+    for (const q of updates) {
+      store.run('UPDATE questions SET position=?, type=?, prompt=?, choices_json=?, answer_json=?, explanation=?, points=? WHERE id=?',
+        [q.position, q.type, q.prompt, q.choices ? JSON.stringify(q.choices) : null, JSON.stringify(q.answer), q.explanation, q.points, q.id]);
+    }
+  });
+  return { ok: true, question_ids: updates.map((q) => q.id) };
+}
+
+export function questionDelete({ questionIds, renumber = true }: any): any {
+  if (!Array.isArray(questionIds) || questionIds.length < 1 || questionIds.length > 100)
+    throw err('VALIDATION', 'question_ids array 1..100', 'question_ids');
+  const quizIds = new Set<any>();
+  for (const id of questionIds) quizIds.add(getQuestion(id).quiz_id);
+
+  store.tx(() => {
+    for (const id of questionIds) store.run('DELETE FROM questions WHERE id=?', [id]);
+    if (renumber) {
+      for (const quizId of quizIds) {
+        const rows = store.all('SELECT id FROM questions WHERE quiz_id=? ORDER BY position, id', [quizId]);
+        rows.forEach((r: any, i: number) => store.run('UPDATE questions SET position=? WHERE id=?', [i + 1, r.id]));
+      }
+    }
+  });
+  return { ok: true };
+}
