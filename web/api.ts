@@ -122,6 +122,13 @@ const real = {
     });
     return data.attempt ? data : { attempt: data };
   },
+  async restartAttempt(quizId) {
+    const data = await req('/api/attempts/restart', {
+      method: 'POST',
+      body: JSON.stringify({ quiz_id: quizId }),
+    });
+    return data.attempt ? data : { attempt: data };
+  },
   answerAttempt(attemptId, questionId, response) {
     return req(`/api/attempts/${attemptId}/answers/${questionId}`, {
       method: 'PATCH',

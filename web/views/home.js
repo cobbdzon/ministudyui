@@ -60,14 +60,16 @@ export async function mount(el, ctx) {
     const quiz = quizzes.find((q) => Number(q.id) === Number(a.quiz_id));
     const title = quiz ? quiz.title : `Quiz ${a.quiz_id}`;
     const href = a.status === 'in_progress' ? `#/quiz/${a.quiz_id}` : `#/attempt/${a.id}`;
-    const score =
-      a.status === 'in_progress' ? '—' : `${Number(a.score ?? 0)}/${Number(a.max_score ?? 0)}`;
     return `<a class="attempt-row" href="${href}">
       <span class="attempt-row__main">
-        <span class="attempt-row__title">${esc(title)}</span>
+        <span class="attempt-row__title" title="${esc(title)}">${esc(title)}</span>
         <span class="attempt-row__time">${esc(relTime(a.submitted_at || a.started_at))}</span>
       </span>
-      <span class="attempt-row__score">${esc(score)}</span>
+      ${
+        a.status === 'in_progress'
+          ? ''
+          : `<span class="attempt-row__score">${esc(`${Number(a.score ?? 0)}/${Number(a.max_score ?? 0)}`)}</span>`
+      }
       ${statusChip(a.status)}
     </a>`;
   }

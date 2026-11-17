@@ -13,6 +13,17 @@ export function start({ quizId }: any): any {
   return { id: r.lastInsertRowid, quiz_id: quizId, status: 'in_progress', max_score: maxScore };
 }
 
+export function restart({ quizId }: any): any {
+  const quiz = store.get('SELECT * FROM quizzes WHERE id=?', [quizId]);
+  if (!quiz) throw err('NOT_FOUND', 'quiz not found');
+  return store.tx(() => {
+    // In-progress attempts are abandoned work: drop them (and their answers,
+    // including any pending AI-graded ones) before starting a fresh attempt.
+    store.run("DELETE FROM attempts WHERE quiz_id=? AND status='in_progress'", [quizId]);
+    return start({ quizId });
+  });
+}
+
 export function answer({ attemptId, questionId, response }: any): any {
   const att = store.get('SELECT * FROM attempts WHERE id=?', [attemptId]);
   if (!att) throw err('NOT_FOUND', 'attempt not found');

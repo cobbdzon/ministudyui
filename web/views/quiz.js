@@ -137,7 +137,10 @@ export async function mount(el, ctx) {
 
   async function startAttempt() {
     try {
-      const res = await ctx.api.startAttempt(Number(quizId));
+      const inProgress = attempts.find((a) => a.status === 'in_progress');
+      const res = inProgress
+        ? await ctx.api.restartAttempt(Number(quizId))
+        : await ctx.api.startAttempt(Number(quizId));
       run = {
         attempt: res.attempt,
         answers: {},

@@ -4,6 +4,7 @@ import * as srs from '../src/boxes/srs/index.js';
 import { gradeAuto } from '../src/boxes/grader/index.js';
 import * as store from '../src/boxes/store/index.js';
 import * as library from '../src/boxes/library/index.js';
+import * as attempts from '../src/boxes/attempts/index.js';
 
 test('srs again does not increase interval and ordering holds', () => {
   const st = { ease: 2.5, interval_days: 3, reps: 2, lapses: 0 };
@@ -108,6 +109,47 @@ test('quiz editing updates only supplied fields and preserves answer keys', () =
     );
     assert.equal(library.quizDelete({ quizId: quiz.id, confirmTitle: 'New title' }).ok, true);
     assert.equal(library.quizList({}).length, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test('restart discards in-progress attempts and their pending AI-graded answers', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const d = library.deckCreate({ name: 'RestartDeck' });
+    const quiz = library.quizCreate({
+      title: 'Restart quiz', deck: d.id,
+      questions: [
+        { type: 'latex', prompt: 'Derive it', reference: 'x^2', points: 2 },
+        { type: 'mcq', prompt: 'Pick one', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'a', points: 1 },
+      ],
+    });
+    const latexId = library.quizGet({ quizId: quiz.id, includeAnswers: false }).questions[0].id;
+
+    const first = attempts.start({ quizId: quiz.id });
+    const latexAnswer = attempts.answer({ attemptId: first.id, questionId: latexId, response: 'x^2' });
+    assert.equal(attempts.pending({ limit: 20 }).length, 1);
+
+    // A second abandoned attempt should be cleaned up too.
+    attempts.start({ quizId: quiz.id });
+
+    const fresh = attempts.restart({ quizId: quiz.id });
+    assert.equal(fresh.status, 'in_progress');
+    assert.equal(attempts.pending({ limit: 20 }).length, 0);
+    const rows = attempts.list({ quizId: quiz.id, limit: 20 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, fresh.id);
+    assert.equal(store.all('SELECT * FROM answers').length, 0);
+
+    // Restart also works when there is nothing to discard.
+    attempts.restart({ quizId: quiz.id });
+    assert.equal(attempts.list({ quizId: quiz.id, limit: 20 }).length, 1);
+    assert.throws(
+      () => attempts.restart({ quizId: 9999 }),
+      (e: any) => e.code === 'NOT_FOUND'
+    );
   } finally {
     store.close();
   }

@@ -165,6 +165,11 @@ function route(req: any, res: any) {
         return send(res, 200, library.quizAddQuestions({ quizId: id, questions: b.questions }));
       }
       // Attempts
+      if (method === 'POST' && p === '/api/attempts/restart') {
+        const b = await parseBody(req);
+        if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
+        return send(res, 200, attempts.restart({ quizId: b.quiz_id ?? b.quizId }));
+      }
       if (method === 'POST' && p === '/api/attempts') {
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };

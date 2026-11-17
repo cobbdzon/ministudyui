@@ -696,6 +696,18 @@ const api = {
     return Promise.resolve({ ok: true, attempt: clone(attempt) });
   },
 
+  restartAttempt(quizId) {
+    for (let i = attempts.length - 1; i >= 0; i--) {
+      const a = attempts[i];
+      if (a.quiz_id !== Number(quizId) || a.status !== 'in_progress') continue;
+      for (let j = answers.length - 1; j >= 0; j--) {
+        if (answers[j].attempt_id === a.id) answers.splice(j, 1);
+      }
+      attempts.splice(i, 1);
+    }
+    return this.startAttempt(quizId);
+  },
+
   answerAttempt(attemptId, questionId, response) {
     const attempt = attempts.find((a) => a.id === Number(attemptId));
     if (!attempt) fail('attempt not found');
