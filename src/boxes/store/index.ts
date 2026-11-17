@@ -25,6 +25,15 @@ export function migrate(): void {
     db!.exec(sql);
     db!.exec('PRAGMA user_version = 1');
   }
+  if (v < 2) {
+    // One quiz per deck (a quiz already has a single deck_id). Keep the oldest
+    // quiz linked if an existing database has more than one, then enforce it.
+    db!.exec(`UPDATE quizzes SET deck_id = NULL WHERE deck_id IS NOT NULL AND id NOT IN (
+      SELECT MIN(id) FROM quizzes WHERE deck_id IS NOT NULL GROUP BY deck_id
+    )`);
+    db!.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_quizzes_deck ON quizzes(deck_id) WHERE deck_id IS NOT NULL');
+    db!.exec('PRAGMA user_version = 2');
+  }
 }
 
 export function tx<T>(fn: () => T): T {

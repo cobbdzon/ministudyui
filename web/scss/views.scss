@@ -217,8 +217,24 @@
 
 .deck-list .list__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 132px 150px 24px;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  grid-template-areas:
+    "main side chevron"
+    "meter side chevron";
+  row-gap: 12px;
+  padding: var(--space-5);
 }
+
+.deck-list .list__main { grid-area: main; }
+.deck-list .deck-row__meter { grid-area: meter; }
+.deck-list .deck-row__side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.deck-list .list__chevron { grid-area: chevron; }
 
 .deck-list .list__title {
   display: flex;
@@ -248,6 +264,7 @@
 
 .deck-row__counts {
   display: flex;
+  align-items: center;
   gap: 10px;
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-mono);
@@ -257,6 +274,25 @@
 .deck-row__counts b {
   color: var(--md-sys-color-on-surface);
   font-weight: 500;
+}
+
+.deck-row__quizzes {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font: var(--md-sys-typescale-body-small);
+}
+
+.deck-row__quizzes .icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
 }
 
 .deck-row__due {
@@ -872,6 +908,25 @@
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-tertiary-container);
   color: var(--md-sys-color-on-tertiary-container);
+}
+
+.quiz-deck {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font: var(--md-sys-typescale-body-small);
+}
+
+.quiz-deck .icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
 }
 
 .quiz-meta {
@@ -1796,11 +1851,11 @@
   }
 
   .deck-list .list__row {
-    grid-template-columns: minmax(0, 1fr) auto 16px;
-  }
-
-  .deck-list .deck-row__meter {
-    display: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "main side"
+      "meter side";
+    column-gap: var(--space-3);
   }
 
   .deck-list .list__chevron {

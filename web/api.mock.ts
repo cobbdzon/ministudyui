@@ -450,8 +450,21 @@ function summaries() {
       due: own.filter((c) => c.due).length,
       new: own.filter((c) => c.reps === 0).length,
       mature: own.filter((c) => c.reps >= 3).length,
+      quizzes: quizzes.filter((q) => q.deck_id === d.id).length,
     };
   });
+}
+
+function removeQuiz(id) {
+  const idx = quizzes.findIndex((q) => q.id === id);
+  if (idx < 0) return;
+  quizzes.splice(idx, 1);
+  for (let i = questions.length - 1; i >= 0; i--) if (questions[i].quiz_id === id) questions.splice(i, 1);
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    if (attempts[i].quiz_id !== id) continue;
+    for (let j = answers.length - 1; j >= 0; j--) if (answers[j].attempt_id === attempts[i].id) answers.splice(j, 1);
+    attempts.splice(i, 1);
+  }
 }
 
 function resolveDeck(ref) {
@@ -557,6 +570,19 @@ const api = {
     return Promise.resolve({ ok: true, deck: clone(deck) });
   },
 
+  deleteDeck(id, confirmName, deleteQuizzes = false) {
+    const deck = resolveDeck(isNaN(id) ? id : Number(id));
+    if (confirmName !== deck.name) fail('confirm_name mismatch');
+    if (deleteQuizzes) {
+      for (const q of [...quizzes]) if (q.deck_id === deck.id) removeQuiz(q.id);
+    } else {
+      quizzes.forEach((q) => { if (q.deck_id === deck.id) q.deck_id = null; });
+    }
+    for (let i = cards.length - 1; i >= 0; i--) if (cards[i].deck_id === deck.id) cards.splice(i, 1);
+    decks.splice(decks.indexOf(deck), 1);
+    return Promise.resolve({ ok: true });
+  },
+
   cards({ deck } = {}) {
     let rows = cards;
     if (deck !== undefined && deck !== null && deck !== '') {
@@ -617,6 +643,7 @@ const api = {
         counts.cards_added++;
       }
     }
+    const usedDecks = new Set();
     for (const q of quizzesIn) {
       if (!q.title || typeof q.title !== 'string') fail('quiz title is required');
       if (!Array.isArray(q.questions) || !q.questions.length) fail('quiz needs at least one question');
@@ -628,6 +655,11 @@ const api = {
           : decks.find((d) => d.id === Number(q.deck)));
         if (!found) fail('deck not found: ' + q.deck);
         deckId = found.id;
+      }
+      if (deckId !== null) {
+        if (usedDecks.has(deckId) || quizzes.some((x) => x.deck_id === deckId))
+          fail('a deck can only have one quiz');
+        usedDecks.add(deckId);
       }
       const quiz = {
         id: nextQuizId++, deck_id: deckId, title: q.title,
@@ -732,6 +764,23 @@ const api = {
         return out;
       });
     return Promise.resolve({ quiz: clone(quiz), questions: qs });
+  },
+
+  deleteQuiz(id, confirmTitle, deleteDeck = false) {
+    const quiz = quizzes.find((q) => String(q.id) === String(id));
+    if (!quiz) fail('quiz not found');
+    if (confirmTitle !== quiz.title) fail('confirm_title mismatch');
+    const deckId = quiz.deck_id;
+    removeQuiz(quiz.id);
+    if (deleteDeck && deckId != null) {
+      const deck = decks.find((d) => d.id === deckId);
+      if (deck) {
+        quizzes.forEach((q) => { if (q.deck_id === deckId) q.deck_id = null; });
+        for (let i = cards.length - 1; i >= 0; i--) if (cards[i].deck_id === deckId) cards.splice(i, 1);
+        decks.splice(decks.indexOf(deck), 1);
+      }
+    }
+    return Promise.resolve({ ok: true });
   },
 
   attempts({ quizId, limit = 20 } = {}) {

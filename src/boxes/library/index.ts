@@ -33,10 +33,13 @@ export function deckList(): any {
   return store.all('SELECT * FROM decks ORDER BY name');
 }
 
-export function deckDelete({ deck, confirmName }: any): any {
+export function deckDelete({ deck, confirmName, deleteQuizzes = false }: any): any {
   const d = resolveDeck(deck);
   if (confirmName !== d.name) throw err('VALIDATION', 'confirm_name mismatch', 'confirm_name');
-  store.run('DELETE FROM decks WHERE id=?', [d.id]);
+  store.tx(() => {
+    if (deleteQuizzes) store.run('DELETE FROM quizzes WHERE deck_id=?', [d.id]);
+    store.run('DELETE FROM decks WHERE id=?', [d.id]);
+  });
   return { ok: true };
 }
 
@@ -142,6 +145,8 @@ export function quizCreate({ title, description, deck, questions }: any): any {
   if (!title || title.length < 1 || title.length > 200) throw err('VALIDATION', 'title', 'title');
   if (!Array.isArray(questions) || questions.length < 1 || questions.length > 100) throw err('VALIDATION', 'questions', 'questions');
   const deckId = deck !== undefined ? resolveDeck(deck).id : null;
+  if (deckId !== null && store.get('SELECT id FROM quizzes WHERE deck_id=?', [deckId]))
+    throw err('CONFLICT', 'deck already has a quiz', 'deck');
   const qs = questions.map(validateQuestion);
   return store.tx(() => {
     const r = store.run('INSERT INTO quizzes (title, description, deck_id) VALUES (?,?,?)', [title, description || '', deckId]);
@@ -218,6 +223,8 @@ export function quizUpdate({ quizId, title, description, deck, source }: any): a
   if (source !== undefined && !['user', 'ai', 'import'].includes(source))
     throw err('VALIDATION', 'source', 'source');
   const deckId = deck !== undefined ? resolveDeck(deck).id : quiz.deck_id;
+  if (deckId !== null && store.get('SELECT id FROM quizzes WHERE deck_id=? AND id<>?', [deckId, quizId]))
+    throw err('CONFLICT', 'deck already has a quiz', 'deck');
   const newTitle = title !== undefined ? title : quiz.title;
   const newDescription = description !== undefined ? description : quiz.description;
   const newSource = source !== undefined ? source : quiz.source;
@@ -226,10 +233,13 @@ export function quizUpdate({ quizId, title, description, deck, source }: any): a
   return { ok: true, quiz: { id: quiz.id, title: newTitle, description: newDescription, deck_id: deckId, source: newSource } };
 }
 
-export function quizDelete({ quizId, confirmTitle }: any): any {
+export function quizDelete({ quizId, confirmTitle, deleteDeck = false }: any): any {
   const quiz = getQuiz(quizId);
   if (confirmTitle !== quiz.title) throw err('VALIDATION', 'confirm_title mismatch', 'confirm_title');
-  store.run('DELETE FROM quizzes WHERE id=?', [quizId]);
+  store.tx(() => {
+    store.run('DELETE FROM quizzes WHERE id=?', [quizId]);
+    if (deleteDeck && quiz.deck_id !== null) store.run('DELETE FROM decks WHERE id=?', [quiz.deck_id]);
+  });
   return { ok: true };
 }
 
@@ -391,16 +401,22 @@ export function importBundle(data: any): any {
   });
 
   const bundleNames = new Set(preparedDecks.map((d) => d.name.toLowerCase()));
+  const usedDecks = new Set<string>();
   for (let i = 0; i < preparedQuizzes.length; i++) {
     const deck = preparedQuizzes[i].deck;
     if (deck === undefined || deck === null || deck === '') continue;
     if (typeof deck !== 'string' && typeof deck !== 'number')
       throw err('VALIDATION', 'deck must be a name or id', `quizzes[${i}].deck`);
+    const key = typeof deck === 'number' ? `id:${deck}` : `name:${deck.toLowerCase()}`;
+    if (usedDecks.has(key)) throw err('CONFLICT', 'a deck can only have one quiz', `quizzes[${i}].deck`);
+    usedDecks.add(key);
     if (typeof deck === 'string' && bundleNames.has(deck.toLowerCase())) continue;
     const existing = typeof deck === 'number'
       ? store.get('SELECT id FROM decks WHERE id=?', [deck])
       : store.get('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [deck]);
     if (!existing) throw err('NOT_FOUND', 'deck not found', `quizzes[${i}].deck`);
+    if (store.get('SELECT id FROM quizzes WHERE deck_id=?', [existing.id]))
+      throw err('CONFLICT', 'deck already has a quiz', `quizzes[${i}].deck`);
   }
 
   const counts = {

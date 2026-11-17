@@ -17,6 +17,7 @@ export async function mount(el, ctx) {
   let deckId = ctx.params[0];
   let deck = null;
   let cards = [];
+  let linkedQuizzes = [];
   let selectedId = null;
   let draft = { front: '', back: '', tags: [] };
   let saved = { front: '', back: '', tags: [], source: 'user' };
@@ -35,13 +36,20 @@ export async function mount(el, ctx) {
   </div>`;
 
   async function load() {
-    const [decksRes, cardsRes] = await Promise.all([ctx.api.decks(), ctx.api.cards({ deck: deckId, limit: 100 })]);
+    const [decksRes, cardsRes, quizzesRes] = await Promise.all([
+      ctx.api.decks(),
+      ctx.api.cards({ deck: deckId, limit: 100 }),
+      ctx.api.quizzes(deckId),
+    ]);
     const decks = decksRes.decks || [];
     deck = decks.find((d) => String(d.id) === String(deckId)) || null;
+    linkedQuizzes = (quizzesRes.quizzes || []).filter((q) => String(q.deck_id) === String(deckId));
     if (!deck && decks.length) {
       deck = decks[0];
       deckId = deck.id;
       const retry = await ctx.api.cards({ deck: deckId, limit: 100 });
+      const retryQuizzes = await ctx.api.quizzes(deckId);
+      linkedQuizzes = (retryQuizzes.quizzes || []).filter((q) => String(q.deck_id) === String(deckId));
       return { cards: retry.cards || [] };
     }
     return { cards: cardsRes.cards || [] };
@@ -81,6 +89,18 @@ export async function mount(el, ctx) {
         <div class="page-head__text">
           <h1 class="page-title">${esc(deck?.name || 'Deck')}</h1>
           <p class="page-sub">${esc(deck?.description || 'Add cards with LaTeX that renders as you type.')}</p>
+          ${
+            linkedQuizzes[0]
+              ? `<div class="linked-item">
+                   <span class="linked-item__label">Linked quiz</span>
+                   <a class="chip chip--tonal chip--link" href="#/quiz/${esc(
+                     String(linkedQuizzes[0].id)
+                   )}" title="Linked quiz: ${esc(linkedQuizzes[0].title)}">${icon('style')}${esc(
+                     linkedQuizzes[0].title
+                   )}</a>
+                 </div>`
+              : ''
+          }
           <div class="quiz-meta" style="margin-top:12px">
             <span class="chip chip--mono">${plural(total, 'card')}</span>
             <span class="chip chip--mono">${deckDue} due</span>
@@ -90,6 +110,7 @@ export async function mount(el, ctx) {
         </div>
         <div class="page-actions">
           <button class="btn btn--outlined" id="rename-deck">${icon('edit')}Rename</button>
+          <button class="btn btn--outlined btn--danger" id="delete-deck">${icon('delete')}Delete</button>
           <a class="btn btn--filled" href="#/review/${esc(String(deckId ?? ''))}">
             ${icon('play_arrow')}${deckDue ? `Review ${deckDue} due` : 'Start review'}
           </a>
@@ -212,6 +233,7 @@ export async function mount(el, ctx) {
 
   function bindShell() {
     el.querySelector('#rename-deck')?.addEventListener('click', openRenameDeck);
+    el.querySelector('#delete-deck')?.addEventListener('click', openDeleteDeck);
     el.querySelector('#card-search')?.addEventListener('input', (e) => {
       query = e.target.value;
       renderList();
@@ -337,6 +359,61 @@ export async function mount(el, ctx) {
             toast(`Deck renamed to “${name}”`);
           } catch (err) {
             toast(err.message || 'Could not rename the deck', { type: 'error' });
+          }
+        });
+      },
+    });
+  }
+
+  function openDeleteDeck() {
+    if (!deck) return;
+    const linked = linkedQuizzes.length;
+    dialog({
+      title: 'Delete deck',
+      body: `
+        <p>Type <strong>${esc(deck.name)}</strong> to confirm. The deck, its cards and its review history will be removed.</p>
+        ${
+          linked
+            ? `<p style="margin-top:10px">This deck has a linked quiz.</p>
+               <label class="check-row">
+                 <input type="checkbox" id="keep-quizzes" checked>
+                 <span>Keep linked quiz?</span>
+               </label>
+               <p class="muted" id="delete-deck-hint" style="font-size:12.5px">The linked quiz stays in your library without a deck.</p>`
+            : ''
+        }
+        <label class="field" style="margin-top:${linked ? '16' : '14'}px">
+          <span class="field__label">Deck name</span>
+          <input class="input" id="deck-delete-name" maxlength="120" autocomplete="off" placeholder="${esc(deck.name)}">
+        </label>`,
+      actions: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Delete deck', value: 'delete', variant: 'btn--filled', danger: true },
+      ],
+      onMount(root) {
+        const input = root.querySelector('#deck-delete-name');
+        const keep = root.querySelector('#keep-quizzes');
+        const hint = root.querySelector('#delete-deck-hint');
+        const submit = root.querySelector('button[value="delete"]');
+        const update = () => {
+          if (submit) submit.disabled = input.value.trim() !== deck.name;
+          if (keep && hint)
+            hint.textContent = keep.checked
+              ? 'The linked quiz stays in your library without a deck.'
+              : 'The linked quiz, its questions and attempts will be deleted too.';
+        };
+        input.addEventListener('input', update);
+        keep?.addEventListener('change', update);
+        update();
+        input.focus();
+        root.addEventListener('submit', async (e) => {
+          if (e.submitter?.value !== 'delete' || input.value.trim() !== deck.name) return;
+          try {
+            await ctx.api.deleteDeck(deckId, deck.name, keep ? !keep.checked : false);
+            toast(`Deck “${deck.name}” deleted`);
+            ctx.go('#/');
+          } catch (err) {
+            toast(err.message || 'Could not delete the deck', { type: 'error' });
           }
         });
       },

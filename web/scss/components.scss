@@ -296,6 +296,45 @@
   gap: 6px;
 }
 
+.chip--link {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.chip--link:hover {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.check-row input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.linked-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.linked-item__label {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
 /* ---------- Panels and lists ---------- */
 
 .panel {

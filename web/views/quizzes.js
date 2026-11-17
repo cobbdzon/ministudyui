@@ -7,8 +7,9 @@ export async function mount(el, ctx) {
   let refreshTimer = null;
 
   async function render() {
-    const data = await ctx.api.quizzes();
+    const [data, decksRes] = await Promise.all([ctx.api.quizzes(), ctx.api.decks()]);
     const quizzes = data.quizzes || [];
+    const decks = decksRes.decks || [];
     const totalQuestions = quizzes.reduce((a, q) => a + (Number(q.question_count) || 0), 0);
 
     el.innerHTML = `
@@ -30,6 +31,7 @@ export async function mount(el, ctx) {
         quizzes.length
           ? `<div class="list quiz-list">${quizzes
               .map((q) => {
+                const deck = decks.find((d) => String(d.id) === String(q.deck_id));
                 const meta = [
                   q.question_count ? plural(q.question_count, 'question') : '',
                   q.total_points ? `${Math.round(q.total_points * 10) / 10} points` : '',
@@ -41,6 +43,15 @@ export async function mount(el, ctx) {
                   <span class="list__main">
                     <span class="list__title">${esc(q.title)}</span>
                     <span class="list__desc">${esc(q.description || 'No description')}</span>
+                    ${
+                      deck
+                        ? `<span class="quiz-deck" data-deck="${esc(
+                            String(deck.id)
+                          )}" role="link" tabindex="0" title="Linked deck: ${esc(deck.name)}">${icon(
+                            'style'
+                          )}${esc(deck.name)}</span>`
+                        : ''
+                    }
                   </span>
                   <span class="list__aside mono" style="font-size:11.5px">${esc(meta)}</span>
                   <span class="list__chevron" aria-hidden="true">${icon('chevron_right')}</span>
@@ -55,6 +66,17 @@ export async function mount(el, ctx) {
             </div>`
       }`;
     el.querySelectorAll('.list__desc').forEach((d) => renderMath(d));
+    el.querySelectorAll('.quiz-deck').forEach((chip) => {
+      const go = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ctx.go(`#/deck/${chip.dataset.deck}`);
+      };
+      chip.addEventListener('click', go);
+      chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') go(e);
+      });
+    });
   }
 
   try {

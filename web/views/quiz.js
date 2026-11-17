@@ -51,8 +51,15 @@ export async function mount(el, ctx) {
   function renderOverview() {
     const inProgress = attempts.find((a) => a.status === 'in_progress');
     const past = attempts.filter((a) => a.status !== 'in_progress');
+    const linked = deckName()
+      ? `<div class="linked-item">
+           <span class="linked-item__label">Linked deck</span>
+           <a class="chip chip--tonal chip--link" href="#/deck/${esc(
+             String(quiz.deck_id)
+           )}" title="Linked deck: ${esc(deckName())}">${icon('style')}${esc(deckName())}</a>
+         </div>`
+      : '';
     const meta = [
-      deckName() ? `<span class="chip chip--plain">${esc(deckName())}</span>` : '',
       `<span class="chip chip--mono">${plural(questions.length, 'question')}</span>`,
       `<span class="chip chip--mono">${totalPoints()} points</span>`,
       quiz?.source === 'ai' ? `<span class="chip chip--tonal">${icon('auto_awesome')}AI-made</span>` : '',
@@ -66,7 +73,8 @@ export async function mount(el, ctx) {
         <div class="quiz-head__main">
           <h1 class="quiz-title">${esc(quiz?.title || 'Quiz')}</h1>
           <p class="page-sub" id="quiz-description">${esc(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</p>
-          <div class="quiz-meta" style="margin-top:14px">${meta}</div>
+          ${linked}
+          <div class="quiz-meta" style="margin-top:12px">${meta}</div>
         </div>
         <div class="page-actions">
           ${
@@ -75,6 +83,7 @@ export async function mount(el, ctx) {
                  <button class="btn btn--text" id="start">Start over</button>`
               : `<button class="btn btn--filled" id="start">${icon('play_arrow')}Start attempt</button>`
           }
+          <button class="btn btn--outlined btn--danger" id="delete-quiz">${icon('delete')}Delete</button>
         </div>
       </header>
 
@@ -128,8 +137,64 @@ export async function mount(el, ctx) {
 
     el.querySelector('#start')?.addEventListener('click', startAttempt);
     el.querySelector('#resume')?.addEventListener('click', () => resumeAttempt(inProgress));
+    el.querySelector('#delete-quiz')?.addEventListener('click', openDeleteQuiz);
     renderMath(el.querySelector('#quiz-description'));
     el.querySelectorAll('.question-preview__prompt').forEach((p) => renderMath(p));
+  }
+
+  function openDeleteQuiz() {
+    if (!quiz) return;
+    const name = deckName();
+    dialog({
+      title: 'Delete quiz',
+      body: `
+        <p>Type <strong>${esc(quiz.title)}</strong> to confirm. The quiz, its questions and its attempts will be removed.</p>
+        ${
+          name
+            ? `<p style="margin-top:10px">Linked deck: <strong>${esc(name)}</strong></p>
+               <label class="check-row">
+                 <input type="checkbox" id="keep-deck" checked>
+                 <span>Keep linked deck?</span>
+               </label>
+               <p class="muted" id="delete-quiz-hint" style="font-size:12.5px">The deck and its cards stay; only this quiz is removed.</p>`
+            : ''
+        }
+        <label class="field" style="margin-top:${name ? '16' : '14'}px">
+          <span class="field__label">Quiz title</span>
+          <input class="input" id="quiz-delete-title" maxlength="200" autocomplete="off" placeholder="${esc(quiz.title)}">
+        </label>`,
+      actions: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Delete quiz', value: 'delete', variant: 'btn--filled', danger: true },
+      ],
+      onMount(root) {
+        const input = root.querySelector('#quiz-delete-title');
+        const keep = root.querySelector('#keep-deck');
+        const hint = root.querySelector('#delete-quiz-hint');
+        const submit = root.querySelector('button[value="delete"]');
+        const update = () => {
+          if (submit) submit.disabled = input.value.trim() !== quiz.title;
+          if (keep && hint)
+            hint.textContent = keep.checked
+              ? 'The deck and its cards stay; only this quiz is removed.'
+              : 'The linked deck and its cards are deleted too.';
+        };
+        input.addEventListener('input', update);
+        keep?.addEventListener('change', update);
+        update();
+        input.focus();
+        root.addEventListener('submit', async (e) => {
+          if (e.submitter?.value !== 'delete' || input.value.trim() !== quiz.title) return;
+          try {
+            await ctx.api.deleteQuiz(quizId, quiz.title, keep ? !keep.checked : false);
+            toast(`Quiz “${quiz.title}” deleted`);
+            ctx.go('#/quizzes');
+          } catch (err) {
+            toast(err.message || 'Could not delete the quiz', { type: 'error' });
+          }
+        });
+      },
+    });
   }
 
   function escapeScore(a) {

@@ -45,10 +45,10 @@ const real = {
       body: JSON.stringify({ name, description: description || '' }),
     });
   },
-  deleteDeck(id, confirmName) {
+  deleteDeck(id, confirmName, deleteQuizzes = false) {
     return req(`/api/decks/${id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ confirm_name: confirmName }),
+      body: JSON.stringify({ confirm_name: confirmName, delete_quizzes: deleteQuizzes }),
     });
   },
   updateDeck(id, patch) {
@@ -109,6 +109,12 @@ const real = {
   },
   quiz(id, { includeAnswers = true } = {}) {
     return req(`/api/quizzes/${id}?include_answers=${includeAnswers}`);
+  },
+  deleteQuiz(id, confirmTitle, deleteDeck = false) {
+    return req(`/api/quizzes/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm_title: confirmTitle, delete_deck: deleteDeck }),
+    });
   },
 
   attempts({ status, quizId, limit = 20 } = {}) {

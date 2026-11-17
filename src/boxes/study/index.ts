@@ -76,6 +76,7 @@ export function deckSummaries(): any {
     const due = store.get('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.due_at <= strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\')', [d.id]).n;
     const mature = store.get('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps >= 3', [d.id]).n;
     const newc = store.get('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps = 0', [d.id]).n;
-    return { id: d.id, name: d.name, description: d.description, due, new: newc, total, mature };
+    const quizzes = store.get('SELECT COUNT(*) AS n FROM quizzes WHERE deck_id=?', [d.id]).n;
+    return { id: d.id, name: d.name, description: d.description, due, new: newc, total, mature, quizzes };
   });
 }

@@ -99,7 +99,7 @@ function route(req: any, res: any) {
         const id = Number(p.split('/')[3]);
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
-        return send(res, 200, library.deckDelete({ deck: id, confirmName: b.confirm_name }));
+        return send(res, 200, library.deckDelete({ deck: id, confirmName: b.confirm_name, deleteQuizzes: !!b.delete_quizzes }));
       }
       if (method === 'PATCH' && /^\/api\/decks\/\d+$/.test(p)) {
         const id = Number(p.split('/')[3]);
@@ -157,6 +157,12 @@ function route(req: any, res: any) {
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
         return send(res, 200, library.quizCreate(b));
+      }
+      if (method === 'DELETE' && /^\/api\/quizzes\/\d+$/.test(p)) {
+        const id = Number(p.split('/')[3]);
+        const b = await parseBody(req);
+        if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
+        return send(res, 200, library.quizDelete({ quizId: id, confirmTitle: b.confirm_title, deleteDeck: !!b.delete_deck }));
       }
       if (method === 'POST' && /^\/api\/quizzes\/\d+\/questions$/.test(p)) {
         const id = Number(p.split('/')[3]);

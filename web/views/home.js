@@ -33,8 +33,9 @@ export async function mount(el, ctx) {
     return { decks, stats, pending, attempts, quizzes };
   }
 
-  function deckRow(d) {
+  function deckRow(d, quizzes) {
     const learning = Math.max((Number(d.total) || 0) - (Number(d.new) || 0) - (Number(d.mature) || 0), 0);
+    const linked = quizzes.filter((q) => String(q.deck_id) === String(d.id));
     return `<a class="list__row" href="#/deck/${d.id}">
       <span class="list__main">
         <span class="list__title">
@@ -42,6 +43,15 @@ export async function mount(el, ctx) {
           <button class="icon-btn icon-btn--sm deck-list__edit" data-rename="${d.id}" title="Rename deck" aria-label="Rename ${esc(d.name)}">${icon('edit')}</button>
         </span>
         <span class="list__desc">${esc(d.description || 'No description')}</span>
+        ${
+          linked[0]
+            ? `<span class="deck-row__quizzes" data-deck="${esc(
+                String(linked[0].id)
+              )}" role="link" tabindex="0" aria-label="Linked quiz: ${esc(
+                linked[0].title
+              )}" title="Linked quiz: ${esc(linked[0].title)}">${icon('style')}${esc(linked[0].title)}</span>`
+            : ''
+        }
       </span>
       <span class="deck-row__meter">
         ${deckMeter(d)}
@@ -51,7 +61,9 @@ export async function mount(el, ctx) {
           <span title="Learning"><b>${learning}</b> learning</span>
         </span>
       </span>
-      <span class="deck-row__due"><b>${d.due ?? 0}</b>due now</span>
+      <span class="deck-row__side">
+        <span class="deck-row__due"><b>${d.due ?? 0}</b>due now</span>
+      </span>
       <span class="list__chevron" aria-hidden="true">${icon('chevron_right')}</span>
     </a>`;
   }
@@ -132,7 +144,7 @@ export async function mount(el, ctx) {
             </div>
             ${
               decks.length
-                ? `<div class="list deck-list">${decks.map(deckRow).join('')}</div>`
+                ? `<div class="list deck-list">${decks.map((d) => deckRow(d, quizzes)).join('')}</div>`
                 : `<div class="empty">
                     <div class="empty__icon">${icon('style')}</div>
                     <h3 class="empty__title">No decks yet</h3>
@@ -176,7 +188,7 @@ export async function mount(el, ctx) {
         </aside>
       </div>`;
 
-    bind(decks);
+    bind(decks, quizzes);
   }
 
   async function refresh() {
@@ -268,7 +280,7 @@ export async function mount(el, ctx) {
     });
   }
 
-  function bind(decks) {
+  function bind(decks, quizzes) {
     el.querySelector('#new-deck')?.addEventListener('click', openNewDeck);
     el.querySelector('#new-deck-empty')?.addEventListener('click', openNewDeck);
     el.querySelectorAll('[data-rename]').forEach((btn) => {
@@ -277,6 +289,17 @@ export async function mount(el, ctx) {
         e.stopPropagation();
         const deck = decks.find((d) => String(d.id) === String(btn.dataset.rename));
         if (deck) openRenameDeck(deck);
+      });
+    });
+    el.querySelectorAll('.deck-row__quizzes').forEach((chip) => {
+      const go = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ctx.go(chip.dataset.deck ? `#/quiz/${chip.dataset.deck}` : '#/quizzes');
+      };
+      chip.addEventListener('click', go);
+      chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') go(e);
       });
     });
   }

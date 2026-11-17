@@ -31,6 +31,7 @@ Quiz
   "deck": string,                // optional: a deck name from "decks" above, or an existing deck
   "questions": [ Question, ... ] // required, 1-100
 }
+One quiz per deck: a deck can have at most one linked quiz, and a quiz can belong to at most one deck. Never give two quizzes the same deck.
 
 Question: an object with "type" and "prompt" (required, 1-4000 characters), plus type-specific fields:
 - "mcq": "choices" = 2-8 objects { "id": string, "text": string }, "correct" = the id of the correct choice.

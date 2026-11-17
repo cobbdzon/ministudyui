@@ -229,3 +229,95 @@ test('importBundle rejects invalid items atomically', () => {
     store.close();
   }
 });
+
+const quizSeed = (title: string, deck?: number) => ({
+  title, deck,
+  questions: [{ type: 'short', prompt: 'P', reference: 'R' }],
+});
+
+test('deleting a deck keeps linked quizzes by default and can remove them too', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const d = library.deckCreate({ name: 'LinkedDeck' });
+    library.cardAdd({ deck: d.id, cards: [{ front: 'Q', back: 'A' }] });
+    const q = library.quizCreate(quizSeed('LinkedQuiz', d.id));
+
+    library.deckDelete({ deck: d.id, confirmName: 'LinkedDeck' });
+    assert.equal(store.get('SELECT * FROM quizzes WHERE id=?', [q.id]).deck_id, null);
+    assert.equal(store.get('SELECT * FROM decks WHERE id=?', [d.id]), null);
+    assert.equal(store.all('SELECT * FROM cards').length, 0);
+
+    const d2 = library.deckCreate({ name: 'Doomed' });
+    const q2 = library.quizCreate(quizSeed('DoomedQuiz', d2.id));
+    library.deckDelete({ deck: d2.id, confirmName: 'Doomed', deleteQuizzes: true });
+    assert.equal(store.get('SELECT * FROM quizzes WHERE id=?', [q2.id]), null);
+    const keeper = library.deckCreate({ name: 'Keeper' });
+    assert.throws(
+      () => library.deckDelete({ deck: keeper.id, confirmName: 'wrong' }),
+      (e: any) => e.code === 'VALIDATION' && e.field === 'confirm_name'
+    );
+  } finally {
+    store.close();
+  }
+});
+
+test('deleting a quiz can also delete its linked deck', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const d = library.deckCreate({ name: 'QuizDeck' });
+    library.cardAdd({ deck: d.id, cards: [{ front: 'Q', back: 'A' }] });
+    const q = library.quizCreate(quizSeed('QuizToDelete', d.id));
+
+    library.quizDelete({ quizId: q.id, confirmTitle: 'QuizToDelete', deleteDeck: true });
+    assert.equal(store.get('SELECT * FROM quizzes WHERE id=?', [q.id]), null);
+    assert.equal(store.get('SELECT * FROM decks WHERE id=?', [d.id]), null);
+    assert.equal(store.all('SELECT * FROM cards').length, 0);
+
+    const d2 = library.deckCreate({ name: 'OtherQuizDeck' });
+    const other = library.quizCreate(quizSeed('OtherQuiz', d2.id));
+    assert.throws(
+      () => library.quizDelete({ quizId: other.id, confirmTitle: 'wrong' }),
+      (e: any) => e.code === 'VALIDATION' && e.field === 'confirm_title'
+    );
+  } finally {
+    store.close();
+  }
+});
+
+test('a deck can only have one linked quiz', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const a = library.deckCreate({ name: 'DeckA' });
+    const b = library.deckCreate({ name: 'DeckB' });
+    library.quizCreate(quizSeed('First', a.id));
+    assert.throws(
+      () => library.quizCreate(quizSeed('Second', a.id)),
+      (e: any) => e.code === 'CONFLICT' && e.field === 'deck'
+    );
+
+    const other = library.quizCreate(quizSeed('Other', b.id));
+    assert.throws(
+      () => library.quizUpdate({ quizId: other.id, deck: a.id }),
+      (e: any) => e.code === 'CONFLICT' && e.field === 'deck'
+    );
+
+    assert.throws(
+      () => library.importBundle({
+        decks: [{ name: 'DeckC' }],
+        quizzes: [
+          { title: 'A', deck: 'DeckC', questions: [{ type: 'short', prompt: 'P', reference: 'R' }] },
+          { title: 'B', deck: 'DeckC', questions: [{ type: 'short', prompt: 'P', reference: 'R' }] },
+        ],
+      }),
+      (e: any) => e.code === 'CONFLICT' && e.field === 'quizzes[1].deck'
+    );
+
+    const indexes = store.all("PRAGMA index_list('quizzes')").map((i: any) => i.name);
+    assert.ok(indexes.includes('idx_quizzes_deck'));
+  } finally {
+    store.close();
+  }
+});
