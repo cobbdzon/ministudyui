@@ -197,41 +197,126 @@
   border-radius: 2px;
 }
 
+/* Recent attempts read like a study log: quiz title, when, standing, score. */
 .attempt-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-2);
-  padding: 10px 0;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  gap: var(--space-3);
+  padding: 13px var(--space-4);
+
+  & + & {
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
 }
 
-.attempt-row:last-child {
-  border-bottom: 0;
-}
-
-.attempt-row__main {
-  flex: 1;
+.attempt-row__body {
   min-width: 0;
 }
 
 .attempt-row__title {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-label-large);
+  font: 500 16px/1.25 var(--font-content);
+  letter-spacing: -0.005em;
 }
 
-.attempt-row__time {
+.attempt-row__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 3px;
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-small);
 }
 
+.attempt-row__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+
+  i {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: var(--attempt-dot, var(--md-sys-color-outline));
+  }
+}
+
+.attempt-row--graded .attempt-row__status {
+  --attempt-dot: var(--md-sys-color-success);
+}
+
+.attempt-row--submitted .attempt-row__status {
+  --attempt-dot: var(--md-sys-color-warning);
+}
+
+.attempt-row--in_progress .attempt-row__status {
+  --attempt-dot: var(--md-sys-color-primary);
+}
+
+.attempt-row__result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .attempt-row__score {
   color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-mono);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+
+  b {
+    font-size: 17px;
+    font-weight: 500;
+  }
+
+  span {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 11px;
+  }
+}
+
+.attempt-row__bar {
+  width: 56px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--md-sys-color-primary);
+  }
+}
+
+/* A submitted attempt can still change while answers are being graded. */
+.attempt-row--submitted .attempt-row__score {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.attempt-row--submitted .attempt-row__bar span {
+  background: var(--md-sys-color-outline);
+}
+
+.attempt-row__chevron {
+  display: grid;
+  place-items: center;
+  color: var(--md-sys-color-outline);
+
+  .icon {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .deck-list .list__row {

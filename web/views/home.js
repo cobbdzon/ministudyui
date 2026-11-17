@@ -9,7 +9,6 @@ import {
   longDate,
   plural,
   relTime,
-  statusChip,
   toast,
 } from '../ui.js';
 
@@ -73,17 +72,30 @@ export async function mount(el, ctx) {
     const quiz = quizzes.find((q) => Number(q.id) === Number(a.quiz_id));
     const title = quiz ? quiz.title : `Quiz ${a.quiz_id}`;
     const href = a.status === 'in_progress' ? `#/quiz/${a.quiz_id}` : `#/attempt/${a.id}`;
-    return `<a class="attempt-row" href="${href}">
-      <span class="attempt-row__main">
+    const score = Number(a.score ?? 0);
+    const max = Number(a.max_score ?? 0);
+    const pct = max > 0 ? Math.min(100, Math.max(0, Math.round((score / max) * 100))) : 0;
+    const statusLabel = {
+      graded: 'Graded',
+      submitted: 'Awaiting grading',
+      in_progress: 'In progress',
+    }[a.status] || 'Unknown';
+    const result =
+      a.status === 'in_progress'
+        ? `<span class="attempt-row__chevron" aria-hidden="true">${icon('chevron_right')}</span>`
+        : `<span class="attempt-row__result">
+            <span class="attempt-row__score" role="img" aria-label="Score ${score} out of ${max}"><b>${score}</b><span>/${max}</span></span>
+            <span class="attempt-row__bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+          </span>`;
+    return `<a class="attempt-row attempt-row--${esc(a.status)}" href="${href}">
+      <span class="attempt-row__body">
         <span class="attempt-row__title" title="${esc(title)}">${esc(title)}</span>
-        <span class="attempt-row__time">${esc(relTime(a.submitted_at || a.started_at))}</span>
+        <span class="attempt-row__meta">
+          <span class="attempt-row__time">${esc(relTime(a.submitted_at || a.started_at))}</span>
+          <span class="attempt-row__status"><i aria-hidden="true"></i>${esc(statusLabel)}</span>
+        </span>
       </span>
-      ${
-        a.status === 'in_progress'
-          ? ''
-          : `<span class="attempt-row__score">${esc(`${Number(a.score ?? 0)}/${Number(a.max_score ?? 0)}`)}</span>`
-      }
-      ${statusChip(a.status)}
+      ${result}
     </a>`;
   }
 
@@ -186,7 +198,7 @@ export async function mount(el, ctx) {
             </div>
             ${
               attempts.length
-                ? `<div>${attempts.map((a) => attemptRow(a, quizzes)).join('')}</div>`
+                ? `<div class="list attempts-list">${attempts.map((a) => attemptRow(a, quizzes)).join('')}</div>`
                 : `<p class="muted" style="font: var(--md-sys-typescale-body-small)">No quiz attempts yet. Open a quiz to test yourself.</p>`
             }
           </section>

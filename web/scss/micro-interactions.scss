@@ -155,17 +155,18 @@
 }
 
 .attempt-row {
-  transition:
-    background var(--mi-t) var(--mi-standard),
-    transform var(--mi-t) var(--mi-standard);
+  transition: background var(--mi-t) var(--mi-standard);
 
   &:hover {
-    background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
-    transform: translateX(2px);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 7%, transparent);
   }
 
-  &:active {
-    transform: translateX(2px) scale(0.995);
+  &:hover .attempt-row__title {
+    color: var(--md-sys-color-primary);
+  }
+
+  &:hover .attempt-row__chevron {
+    color: var(--md-sys-color-primary);
   }
 }
 
