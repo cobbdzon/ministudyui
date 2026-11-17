@@ -126,7 +126,7 @@ function route(req: any, res: any) {
       if (method === 'DELETE' && p === '/api/cards') {
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
-        return send(res, 200, library.cardDelete(b));
+        return send(res, 200, library.cardDelete({ cardIds: b.card_ids ?? b.cardIds }));
       }
       // Review
       if (method === 'GET' && p === '/api/review/queue') {
@@ -168,7 +168,7 @@ function route(req: any, res: any) {
       if (method === 'POST' && p === '/api/attempts') {
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
-        return send(res, 200, attempts.start(b));
+        return send(res, 200, attempts.start({ quizId: b.quiz_id ?? b.quizId }));
       }
       if (method === 'GET' && p === '/api/attempts') {
         const q = url.searchParams;
