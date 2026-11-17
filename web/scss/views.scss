@@ -80,10 +80,29 @@
 }
 
 .home-date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
   margin-bottom: var(--space-3);
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-mono);
   font-size: 12px;
+}
+
+.home-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-primary);
+  font-variant-numeric: tabular-nums;
+
+  .icon {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 .home-greeting {

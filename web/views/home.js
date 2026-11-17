@@ -5,6 +5,7 @@ import {
   dialog,
   greeting,
   heatmap,
+  localTime,
   longDate,
   plural,
   relTime,
@@ -117,12 +118,16 @@ export async function mount(el, ctx) {
       : '';
 
     const reviewTotal = (stats.reviews_per_day || []).reduce((a, d) => a + (Number(d.n) || 0), 0);
+    const now = new Date();
 
     el.innerHTML = `
       <div class="home-layout">
         <div class="home-main">
           <header class="home-hero">
-            <p class="home-date">${esc(longDate())}</p>
+            <p class="home-date">
+              ${esc(longDate(now))}
+              <span class="home-time">${icon('schedule')}<time datetime="${now.toTimeString().slice(0, 5)}">${esc(localTime(now))}</time></span>
+            </p>
             <h1 class="home-greeting">${esc(greeting())}</h1>
             <p class="home-status">${dueLine}</p>
             <div class="home-actions">

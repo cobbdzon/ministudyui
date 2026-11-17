@@ -1,0 +1,28 @@
+{
+  "greeting": {
+    "lateNight": [
+      "Still up?",
+      "Burning the midnight oil?",
+      "Shouldn't you be asleep?",
+      "Night owl, I see."
+    ],
+    "morning": [
+      "Good morning.",
+      "Rise and shine.",
+      "Coffee first, then cards?",
+      "Morning! Let's get to it."
+    ],
+    "afternoon": [
+      "Good afternoon.",
+      "Afternoon. Still with us?",
+      "Post-lunch focus, let's go.",
+      "How's the afternoon treating you?"
+    ],
+    "evening": [
+      "Good evening.",
+      "Evening! Winding down?",
+      "One more session before bed?",
+      "Good evening. Kettle's on."
+    ]
+  }
+}

@@ -1,4 +1,5 @@
 import { icon } from './icons.js';
+import { messages } from './messages.js';
 import { escapeHtml } from './math.js';
 
 /* ---------- Formatting ---------- */
@@ -40,12 +41,22 @@ export function longDate(date = new Date()) {
   return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+export function localTime(date = new Date()) {
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function pick(options) {
+  if (!options?.length) return '';
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 export function greeting(date = new Date()) {
   const h = date.getHours();
-  if (h < 5) return 'Still up?';
-  if (h < 12) return 'Good morning.';
-  if (h < 18) return 'Good afternoon.';
-  return 'Good evening.';
+  const g = messages.greeting;
+  if (h < 5) return pick(g.lateNight);
+  if (h < 12) return pick(g.morning);
+  if (h < 18) return pick(g.afternoon);
+  return pick(g.evening);
 }
 
 export function plural(n, one, many = `${one}s`) {

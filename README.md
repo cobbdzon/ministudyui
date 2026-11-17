@@ -69,6 +69,13 @@ renders `og-image.svg` to `web/og-image.png` (generated and gitignored). It runs
 automatically as part of `bun run start` and `bun run dev`, so there's no separate
 step on a fresh checkout.
 
+### Messages
+
+User-facing copy lives in `web/messages.json`, loaded once when the page starts.
+The home-page greeting picks a random line from the lists under `greeting`,
+depending on the time of day. Add, remove, or rewrite lines to change the
+wording. Restart the server (or refresh the page) to pick up changes.
+
 ### Environment
 
 | Variable | Default | Notes |
