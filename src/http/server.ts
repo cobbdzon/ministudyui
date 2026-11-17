@@ -137,7 +137,7 @@ function route(req: any, res: any) {
       if (method === 'POST' && p === '/api/review') {
         const b = await parseBody(req);
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
-        return send(res, 200, study.review(b));
+        return send(res, 200, study.review({ cardId: b.card_id ?? b.cardId, rating: b.rating }));
       }
       if (method === 'POST' && p === '/api/review/undo') {
         return send(res, 200, study.undo());
