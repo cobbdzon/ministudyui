@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc } from '../math.js';
+import { escapeHtml as esc, renderMath } from '../math.js';
 import { plural, toast } from '../ui.js';
 
 export async function mount(el, ctx) {
@@ -54,6 +54,7 @@ export async function mount(el, ctx) {
               <a class="btn btn--tonal" href="#/">Go to your decks</a>
             </div>`
       }`;
+    el.querySelectorAll('.list__desc').forEach((d) => renderMath(d));
   }
 
   try {

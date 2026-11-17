@@ -65,7 +65,7 @@ export async function mount(el, ctx) {
       <header class="quiz-head">
         <div class="quiz-head__main">
           <h1 class="quiz-title">${esc(quiz?.title || 'Quiz')}</h1>
-          <p class="page-sub">${esc(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</p>
+          <p class="page-sub" id="quiz-description">${esc(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</p>
           <div class="quiz-meta" style="margin-top:14px">${meta}</div>
         </div>
         <div class="page-actions">
@@ -128,6 +128,7 @@ export async function mount(el, ctx) {
 
     el.querySelector('#start')?.addEventListener('click', startAttempt);
     el.querySelector('#resume')?.addEventListener('click', () => resumeAttempt(inProgress));
+    renderMath(el.querySelector('#quiz-description'));
     el.querySelectorAll('.question-preview__prompt').forEach((p) => renderMath(p));
   }
 

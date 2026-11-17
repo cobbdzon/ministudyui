@@ -186,11 +186,15 @@ export function quizGet({ quizId, includeAnswers }: any): any {
 
 export function quizList({ deck, limit }: any): any {
   const lim = Math.min(Math.max(limit || 50, 1), 100);
+  const base = `SELECT qz.*,
+    (SELECT COUNT(*) FROM questions qs WHERE qs.quiz_id = qz.id) AS question_count,
+    (SELECT COALESCE(SUM(qs.points), 0) FROM questions qs WHERE qs.quiz_id = qz.id) AS total_points
+    FROM quizzes qz`;
   if (deck !== undefined) {
     const d = resolveDeck(deck);
-    return store.all('SELECT * FROM quizzes WHERE deck_id=? ORDER BY id LIMIT ?', [d.id, lim]);
+    return store.all(base + ' WHERE qz.deck_id=? ORDER BY qz.id LIMIT ?', [d.id, lim]);
   }
-  return store.all('SELECT * FROM quizzes ORDER BY id LIMIT ?', [lim]);
+  return store.all(base + ' ORDER BY qz.id LIMIT ?', [lim]);
 }
 
 function getQuiz(quizId: any): any {
