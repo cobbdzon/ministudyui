@@ -197,8 +197,17 @@ export function dialog({ title, body = '', actions = [], wide = false, onMount }
     document.body.appendChild(root);
     const close = (value) => {
       resolve(value);
-      root.close();
-      root.remove();
+      if (root.classList.contains('is-closing')) return;
+      root.classList.add('is-closing');
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        root.close();
+        root.remove();
+      };
+      root.addEventListener('animationend', finish, { once: true });
+      setTimeout(finish, 260);
     };
     root.addEventListener('cancel', (e) => {
       e.preventDefault();
@@ -208,6 +217,7 @@ export function dialog({ title, body = '', actions = [], wide = false, onMount }
       if (e.target === root) close('cancel');
     });
     root.addEventListener('submit', (e) => {
+      e.preventDefault();
       const submitter = e.submitter;
       if (submitter && submitter.value) close(submitter.value);
     });

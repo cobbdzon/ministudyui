@@ -1,0 +1,428 @@
+/*
+  Micro-interactions: functional motion for every interactive surface.
+  Transform/opacity first, 100–250ms, ease-out in / ease-in out.
+  Reduced motion is neutralised globally in base.scss.
+*/
+
+:root {
+  --mi-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --mi-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --mi-in: cubic-bezier(0.4, 0, 1, 1);
+  --mi-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --mi-t: var(--md-sys-motion-duration-short);
+  --mi-m: var(--md-sys-motion-duration-medium);
+}
+
+@mixin press($scale: 0.96) {
+  &:active {
+    transform: scale($scale);
+  }
+}
+
+/* ---------- Buttons & controls: instant press feedback ---------- */
+
+.btn {
+  transition:
+    opacity var(--mi-t) var(--mi-standard),
+    background var(--mi-t) var(--mi-standard),
+    border-color var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    box-shadow var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.96);
+}
+
+.icon-btn {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    box-shadow var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.92);
+}
+
+.brand {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    transform var(--mi-m) var(--mi-out);
+
+  &:hover {
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+}
+
+.rail-item {
+  transition:
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.94);
+}
+
+.bottom-nav__item {
+  transition:
+    color var(--mi-t) var(--mi-standard),
+    background var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.94);
+}
+
+.sheet__action {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.98);
+}
+
+.tab {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.96);
+}
+
+.tex-btn {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    border-color var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.92);
+}
+
+.check-row input {
+  transition: transform var(--mi-t) var(--mi-spring);
+  @include press(0.88);
+}
+
+/* ---------- Chips, links, and text controls ---------- */
+
+.chip {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    border-color var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+}
+
+.chip--link {
+  @include press(0.96);
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.tag-input {
+  transition:
+    border-color var(--mi-t) var(--mi-standard),
+    box-shadow var(--mi-t) var(--mi-standard);
+}
+
+.tag-input .chip button {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    opacity var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.82);
+}
+
+.back-link {
+  transition:
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+
+  &:hover {
+    transform: translateX(-2px);
+  }
+
+  &:active {
+    transform: translateX(-3px);
+  }
+}
+
+.deck-row__quizzes,
+.quiz-deck {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.97);
+}
+
+.attempt-row {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-standard);
+
+  &:hover {
+    background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
+    transform: translateX(2px);
+  }
+
+  &:active {
+    transform: translateX(2px) scale(0.995);
+  }
+}
+
+.stats-deck__name {
+  display: inline-block;
+  transition:
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-standard);
+
+  &:hover {
+    transform: translateX(2px);
+  }
+}
+
+.field__count,
+.import-hint {
+  transition: color var(--mi-t) var(--mi-standard);
+}
+
+a.list__row:active,
+button.list__row:active {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 9%, transparent);
+}
+
+/* ---------- Cards, choices, and rating buttons ---------- */
+
+.card-list__item {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.985);
+}
+
+.rating {
+  transition:
+    filter var(--mi-t) var(--mi-standard),
+    background var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+.choice {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    border-color var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    box-shadow var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+  @include press(0.985);
+
+  &[data-selected="true"] {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent);
+  }
+}
+
+.runner-dot {
+  transition:
+    background var(--mi-t) var(--mi-standard),
+    border-color var(--mi-t) var(--mi-standard),
+    color var(--mi-t) var(--mi-standard),
+    transform var(--mi-t) var(--mi-spring);
+
+  &:hover {
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.heatmap__cell {
+  transition:
+    box-shadow var(--mi-t) var(--mi-standard),
+    filter var(--mi-t) var(--mi-standard);
+
+  /* Box-shadow/filter give feedback without growing the scroll area. */
+  &:hover {
+    filter: brightness(1.12);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+  }
+}
+
+/* ---------- Enter / exit for overlays ---------- */
+
+@keyframes mi-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+}
+
+.dialog[open] {
+  animation: mi-dialog-in var(--mi-m) var(--mi-out) both;
+}
+
+@keyframes mi-dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.dialog[open].is-closing {
+  animation: mi-dialog-out calc(var(--mi-t) + 20ms) var(--mi-in) both;
+}
+
+@keyframes mi-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+.sheet[open] {
+  animation: mi-sheet-in var(--mi-m) var(--mi-out) both;
+}
+
+@keyframes mi-sheet-out {
+  to {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+.sheet[open].is-closing {
+  animation: mi-sheet-out calc(var(--mi-t) + 30ms) var(--mi-in) both;
+}
+
+.toast.is-leaving {
+  transform: translateY(8px) scale(0.98);
+  transition:
+    opacity var(--mi-t) var(--mi-in),
+    transform var(--mi-t) var(--mi-in);
+}
+
+/* Theme icon swaps on every toggle (innerHTML replaces the svg). */
+#theme-icon svg {
+  animation: mi-theme-in var(--mi-m) var(--mi-out) both;
+}
+
+@keyframes mi-theme-in {
+  from {
+    opacity: 0;
+    transform: rotate(-45deg) scale(0.6);
+  }
+}
+
+.grade-manual[open] .grade-form {
+  animation: mi-fade var(--mi-m) var(--mi-out) both;
+}
+
+/* ---------- View & list entrances (navigation feedback) ---------- */
+
+@keyframes mi-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.view-enter > * {
+  animation: mi-fade var(--mi-m) var(--mi-out) both;
+}
+
+@for $i from 2 through 6 {
+  .view-enter > *:nth-child(#{$i}) {
+    animation-delay: #{($i - 1) * 25}ms;
+  }
+}
+
+.view-enter .list__row,
+.view-enter .attempt-row,
+.view-enter .card-list__item,
+.view-enter .grade-item,
+.view-enter .question-preview,
+.view-enter .result-item {
+  animation: mi-rise 200ms var(--mi-out) both;
+}
+
+@for $i from 1 through 8 {
+  .view-enter .list__row:nth-child(#{$i}),
+  .view-enter .attempt-row:nth-child(#{$i}),
+  .view-enter .card-list__item:nth-child(#{$i}),
+  .view-enter .grade-item:nth-child(#{$i}),
+  .view-enter .question-preview:nth-child(#{$i}),
+  .view-enter .result-item:nth-child(#{$i}) {
+    animation-delay: #{20 + $i * 18}ms;
+  }
+}
+
+/* Charts grow into place rather than appearing fully formed. */
+@keyframes mi-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes mi-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.view-enter .chart-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: mi-bar-grow 240ms var(--mi-out) both;
+}
+
+@for $i from 1 through 30 {
+  .view-enter .chart-bar:nth-of-type(#{$i}) {
+    animation-delay: #{$i * 12}ms;
+  }
+}
+
+.view-enter .distribution__fill {
+  transform-origin: left;
+  animation: mi-grow-x 240ms var(--mi-out) both;
+}
+
+.view-enter .pie__seg {
+  animation: mi-fade 240ms var(--mi-out) both;
+}
+
+/* Keep reduced-motion users from waiting out stagger delays. */
+@media (prefers-reduced-motion: reduce) {
+  .view-enter > *,
+  .view-enter .list__row,
+  .view-enter .attempt-row,
+  .view-enter .card-list__item,
+  .view-enter .grade-item,
+  .view-enter .question-preview,
+  .view-enter .result-item,
+  .view-enter .chart-bar,
+  .view-enter .distribution__fill,
+  .view-enter .pie__seg,
+  #theme-icon svg,
+  .grade-manual[open] .grade-form,
+  .dialog[open],
+  .dialog[open].is-closing,
+  .sheet[open],
+  .sheet[open].is-closing {
+    animation-delay: 0ms !important;
+  }
+}

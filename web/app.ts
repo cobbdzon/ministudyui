@@ -111,7 +111,10 @@ let moreSheet = null;
 
 function closeMoreSheet() {
   if (!moreSheet) return;
-  moreSheet.close();
+  const sheet = moreSheet;
+  moreSheet = null;
+  sheet.classList.add('is-closing');
+  setTimeout(() => sheet.close(), 170);
 }
 
 function themeAction() {
@@ -151,9 +154,11 @@ function openMoreSheet() {
   document.body.appendChild(sheet);
   moreSheet = sheet;
 
+  sheet.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    closeMoreSheet();
+  });
   sheet.addEventListener('close', () => {
-    if (moreSheet !== sheet) return;
-    moreSheet = null;
     sheet.remove();
     document.getElementById('more')?.focus();
   });
@@ -184,6 +189,7 @@ function openMoreSheet() {
 let cleanup = null;
 let lastHash = null;
 let renderedView = null;
+let viewEnterTimer = null;
 
 function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
@@ -264,6 +270,11 @@ async function route() {
 
   if (lastHash !== location.hash) {
     main.innerHTML = loadingState();
+    clearTimeout(viewEnterTimer);
+    main.classList.remove('view-enter');
+    void main.offsetWidth;
+    main.classList.add('view-enter');
+    viewEnterTimer = setTimeout(() => main.classList.remove('view-enter'), 700);
   }
   lastHash = location.hash;
 
