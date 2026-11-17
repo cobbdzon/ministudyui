@@ -3,20 +3,22 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "bun src/http/server.ts",
+    "assets": "bun scripts/build-assets.ts",
+    "start": "bun run assets && bun src/http/server.ts",
     "mcp": "bun src/mcp/stdio.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "seed": "bun scripts/seed.ts",
     "seed:demo": "bun scripts/seed-demo.ts",
     "sass": "sass --watch web/scss:web/css --no-source-map",
-    "dev": "bun --watch src/http/server.ts & bun run sass"
+    "dev": "bun run assets && (bun --watch src/http/server.ts & bun run sass)"
   },
   "engines": {
     "bun": ">=1.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@resvg/resvg-js": "^2.6.2",
     "katex": "^0.19.1"
   },
   "devDependencies": {

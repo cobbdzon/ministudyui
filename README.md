@@ -62,6 +62,13 @@ Or keep it watching in another terminal:
 bun run sass
 ```
 
+### Brand assets
+
+`web/favicon.svg` and `web/og-image.svg` are the source marks. `bun run assets`
+renders `og-image.svg` to `web/og-image.png` (generated and gitignored). It runs
+automatically as part of `bun run start` and `bun run dev`, so there's no separate
+step on a fresh checkout.
+
 ### Environment
 
 | Variable | Default | Notes |

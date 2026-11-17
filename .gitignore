@@ -2,8 +2,9 @@
 node_modules/
 .bun/
 
-# Build output / generated assets (scss is source of truth)
+# Build output / generated assets (scss + svg sources are source of truth)
 web/css/
+web/og-image.png
 
 # Local data / databases
 data/
