@@ -1,0 +1,24 @@
+{
+  "name": "ministudyui",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/http/server.js",
+    "mcp": "bun src/mcp/stdio.js",
+    "test": "bun test",
+    "seed": "bun scripts/seed.js",
+    "sass": "sass --watch web/scss:web/css --no-source-map",
+    "dev": "bun --watch src/http/server.js & bun run sass"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "katex": "^0.19.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1",
+    "sass": "^1.108.2"
+  }
+}

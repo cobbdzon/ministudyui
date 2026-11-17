@@ -1,0 +1,33 @@
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--font-ui);background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);line-height:1.5}
+:focus-visible{outline:2px solid var(--md-sys-color-primary);outline-offset:2px}
+#app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+.rail{background:var(--md-sys-color-surface-variant);padding:20px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.rail .brand{font-family:var(--font-content);font-size:22px;font-weight:600;padding:8px 12px;margin-bottom:12px;color:var(--md-sys-color-primary)}
+.rail button{background:transparent;border:none;color:var(--md-sys-color-on-surface);padding:10px 16px;border-radius:var(--md-sys-shape-corner-full);cursor:pointer;text-align:left;font:inherit;font-size:14px;transition:background var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-emphasized)}
+.rail button:hover{background:color-mix(in srgb,var(--md-sys-color-on-surface) 8%,transparent)}
+.rail button.active{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);font-weight:600}
+.rail .theme-btn{margin-top:auto;background:var(--md-sys-color-surface);border:1px solid var(--md-sys-color-outline-variant)}
+.main{padding:32px 40px;max-width:1200px;margin:0 auto;width:100%}
+h1,h2,h3{font-family:var(--font-content);font-weight:600;letter-spacing:-0.01em;margin:0 0 16px}
+h1{font-size:36px}h2{font-size:24px}h3{font-size:18px}
+.card{background:var(--md-sys-color-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);padding:20px;margin:12px 0;transition:box-shadow var(--md-sys-motion-duration-short)}
+.card:hover{box-shadow:0 1px 3px color-mix(in srgb,var(--md-sys-color-on-surface) 12%,transparent)}
+button.primary{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border:none;padding:12px 24px;border-radius:var(--md-sys-shape-corner-full);cursor:pointer;font-weight:600;transition:transform var(--md-sys-motion-duration-short)}
+button.primary:active{transform:scale(.98)}
+button.tonal{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);border:none;padding:8px 16px;border-radius:var(--md-sys-shape-corner-full);cursor:pointer;font-size:14px}
+button.ghost{background:transparent;border:1px solid var(--md-sys-color-outline);color:var(--md-sys-color-on-surface);padding:8px 16px;border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
+input,textarea{font:inherit;padding:10px 12px;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-small);background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);width:100%}
+textarea{font-family:var(--font-mono);min-height:120px;resize:vertical}
+.chip{display:inline-block;padding:4px 12px;border-radius:var(--md-sys-shape-corner-full);background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);font-size:12px;margin:2px 4px 2px 0}
+.badge-pending{background:var(--md-sys-color-warning-container);color:var(--md-sys-color-on-warning-container);padding:4px 10px;border-radius:var(--md-sys-shape-corner-full);font-size:12px;font-weight:600}
+.badge-ok{background:var(--md-sys-color-success-container);color:var(--md-sys-color-on-success-container);padding:4px 10px;border-radius:var(--md-sys-shape-corner-full);font-size:12px;font-weight:600}
+.math{font-family:var(--font-content);font-size:20px;line-height:1.6}
+.hero-num{font-family:var(--font-content);font-size:72px;font-weight:700;line-height:1;color:var(--md-sys-color-primary)}
+.empty{padding:48px 24px;text-align:center;color:var(--md-sys-color-on-surface-variant)}
+.empty svg{opacity:.4;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+@media(max-width:800px){#app{grid-template-columns:1fr}.rail{flex-direction:row;height:auto;position:relative;overflow-x:auto}.main{padding:20px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
