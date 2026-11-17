@@ -76,6 +76,12 @@ const real = {
     });
     return data;
   },
+  importBundle(bundle) {
+    return req('/api/import', {
+      method: 'POST',
+      body: JSON.stringify(bundle),
+    });
+  },
   updateCard(id, patch) {
     return req(`/api/cards/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
   },

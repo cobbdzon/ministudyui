@@ -164,6 +164,12 @@ function route(req: any, res: any) {
         if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type' };
         return send(res, 200, library.quizAddQuestions({ quizId: id, questions: b.questions }));
       }
+      // Import (bundle pasted from an external AI assistant / agent)
+      if (method === 'POST' && p === '/api/import') {
+        const b = await parseBody(req);
+        if (req.headers['content-type'] !== 'application/json') throw { code: 'VALIDATION', message: 'content-type must be application/json' };
+        return send(res, 200, library.importBundle(b));
+      }
       // Attempts
       if (method === 'POST' && p === '/api/attempts/restart') {
         const b = await parseBody(req);

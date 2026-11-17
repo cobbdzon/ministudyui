@@ -438,6 +438,8 @@ const reviewsPerDay = reviewSeries.map((n, i) => ({
 let lastReview = null;
 let nextDeckId = 4;
 let nextCardId = 21;
+let nextQuizId = 3;
+let nextQuestionId = 8;
 
 function summaries() {
   return decks.map((d) => {
@@ -583,6 +585,75 @@ const api = {
       ids.push(card.id);
     }
     return Promise.resolve({ ok: true, card_ids: ids });
+  },
+
+  importBundle(bundle) {
+    if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) fail('bundle must be an object');
+    const decksIn = bundle.decks || [];
+    const quizzesIn = bundle.quizzes || [];
+    if (!Array.isArray(decksIn) || !Array.isArray(quizzesIn)) fail('decks and quizzes must be arrays');
+    if (!decksIn.length && !quizzesIn.length) fail('nothing to import');
+    const counts = {
+      ok: true, decks_created: 0, decks_reused: 0, cards_added: 0,
+      quizzes_created: 0, questions_added: 0,
+    };
+    const ids = new Map();
+    for (const d of decksIn) {
+      if (!d.name || typeof d.name !== 'string') fail('deck name is required');
+      let deck = decks.find((x) => x.name.toLowerCase() === d.name.toLowerCase());
+      if (deck) counts.decks_reused++;
+      else {
+        deck = { id: nextDeckId++, name: d.name, description: d.description || '', created_at: iso(0) };
+        decks.push(deck);
+        counts.decks_created++;
+      }
+      ids.set(d.name.toLowerCase(), deck.id);
+      for (const c of d.cards || []) {
+        if (!c.front || !c.back) fail('front and back are required');
+        cards.push({
+          id: nextCardId++, deck_id: deck.id, front: c.front, back: c.back,
+          tags: c.tags || [], source: 'import', reps: 0, due: true,
+        });
+        counts.cards_added++;
+      }
+    }
+    for (const q of quizzesIn) {
+      if (!q.title || typeof q.title !== 'string') fail('quiz title is required');
+      if (!Array.isArray(q.questions) || !q.questions.length) fail('quiz needs at least one question');
+      let deckId = null;
+      if (q.deck !== undefined && q.deck !== null && q.deck !== '') {
+        const key = String(q.deck).toLowerCase();
+        const found = ids.get(key) || (isNaN(q.deck)
+          ? decks.find((d) => d.name.toLowerCase() === key)
+          : decks.find((d) => d.id === Number(q.deck)));
+        if (!found) fail('deck not found: ' + q.deck);
+        deckId = found.id;
+      }
+      const quiz = {
+        id: nextQuizId++, deck_id: deckId, title: q.title,
+        description: q.description || '', source: 'import', created_at: iso(0),
+      };
+      quizzes.push(quiz);
+      counts.quizzes_created++;
+      for (const question of q.questions) {
+        let answer;
+        if (question.type === 'mcq' || question.type === 'multi') answer = { correct: question.correct };
+        else if (question.type === 'numeric') answer = {
+          value: question.value, tolerance: question.tolerance ?? 0,
+          tolerance_type: question.tolerance_type || 'abs', unit: question.unit ?? null,
+        };
+        else answer = { reference: question.reference, rubric: question.rubric || null };
+        questions.push({
+          id: nextQuestionId++, quiz_id: quiz.id,
+          position: questions.filter((x) => x.quiz_id === quiz.id).length + 1,
+          type: question.type, prompt: question.prompt,
+          choices: (question.type === 'mcq' || question.type === 'multi') ? question.choices : undefined,
+          answer, points: question.points ?? 1, explanation: question.explanation || '',
+        });
+        counts.questions_added++;
+      }
+    }
+    return Promise.resolve(counts);
   },
 
   updateCard(id, patch) {

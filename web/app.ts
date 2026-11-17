@@ -10,6 +10,7 @@ import * as quiz from './views/quiz.js';
 import * as attempt from './views/attempt.js';
 import * as grading from './views/grading.js';
 import * as stats from './views/stats.js';
+import * as importView from './views/import.js';
 
 const app = document.getElementById('app');
 
@@ -38,6 +39,9 @@ function shell() {
         ${NAV.map((n) => navItem(n, 'rail-item')).join('')}
       </div>
       <div class="rail-foot">
+        <button class="icon-btn" id="import" aria-label="Import from AI" title="Import AI-generated decks and quizzes">
+          ${icon('upload')}
+        </button>
         <button class="icon-btn" id="shortcuts" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
           ${icon('keyboard')}
         </button>
@@ -232,6 +236,7 @@ document.getElementById('theme-toggle')?.addEventListener('click', () => {
   applyTheme(current === 'dark' ? 'light' : 'dark');
 });
 document.getElementById('shortcuts')?.addEventListener('click', openShortcuts);
+document.getElementById('import')?.addEventListener('click', () => importView.openImport(ctx));
 
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();

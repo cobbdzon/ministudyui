@@ -227,7 +227,13 @@ export async function mount(el, ctx) {
       });
     });
     el.querySelector('#save-card')?.addEventListener('click', save);
-    el.querySelector('#discard')?.addEventListener('click', () => {
+    el.querySelector('#discard')?.addEventListener('click', async () => {
+      const ok = await confirmDanger({
+        title: 'Discard changes?',
+        body: 'Your unsaved edits to this card will be lost.',
+        confirmLabel: 'Discard',
+      });
+      if (!ok) return;
       if (selectedId) selectCard(cards.find((c) => String(c.id) === String(selectedId)), { force: true });
       else {
         draft = { front: '', back: '', tags: [] };

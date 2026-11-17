@@ -112,7 +112,7 @@ export function cardSearch({ query, deck, tag, source, limit, offset }: any): an
   return { cards: rows, total: rows.length };
 }
 
-function validateQuestion(q: any, i: number): any {
+export function validateQuestion(q: any, i: number): any {
   if (!q || !q.type) throw err('VALIDATION', 'missing type', `questions[${i}].type`);
   if (!['mcq','multi','numeric','short','latex'].includes(q.type)) throw err('VALIDATION', 'bad type', `questions[${i}].type`);
   if (!q.prompt || q.prompt.length < 1 || q.prompt.length > 4000) throw err('VALIDATION', 'prompt', `questions[${i}].prompt`);
@@ -307,4 +307,153 @@ export function questionDelete({ questionIds, renumber = true }: any): any {
     }
   });
   return { ok: true };
+}
+
+// Import a bundle generated outside MCP (e.g. pasted from another AI assistant).
+// Everything is validated up front and written in a single transaction, so a
+// bad item cannot leave a half-imported deck or quiz behind.
+export function importBundle(data: any): any {
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    throw err('VALIDATION', 'bundle must be a JSON object');
+  const decksIn = data.decks ?? [];
+  const quizzesIn = data.quizzes ?? [];
+  if (!Array.isArray(decksIn)) throw err('VALIDATION', 'decks must be an array', 'decks');
+  if (!Array.isArray(quizzesIn)) throw err('VALIDATION', 'quizzes must be an array', 'quizzes');
+  if (decksIn.length > 50) throw err('VALIDATION', 'too many decks (max 50)', 'decks');
+  if (quizzesIn.length > 50) throw err('VALIDATION', 'too many quizzes (max 50)', 'quizzes');
+  if (!decksIn.length && !quizzesIn.length)
+    throw err('VALIDATION', 'nothing to import: provide decks and/or quizzes');
+
+  const preparedDecks = decksIn.map((d: any, i: number) => {
+    if (!d || typeof d !== 'object' || Array.isArray(d))
+      throw err('VALIDATION', 'deck must be an object', `decks[${i}]`);
+    if (typeof d.name !== 'string' || d.name.length < 1 || d.name.length > 120)
+      throw err('VALIDATION', 'deck name length', `decks[${i}].name`);
+    if (d.description !== undefined && (typeof d.description !== 'string' || d.description.length > 2000))
+      throw err('VALIDATION', 'deck description too long', `decks[${i}].description`);
+    const cards = d.cards ?? [];
+    if (!Array.isArray(cards)) throw err('VALIDATION', 'cards must be an array', `decks[${i}].cards`);
+    if (cards.length > 100) throw err('VALIDATION', 'too many cards (max 100)', `decks[${i}].cards`);
+    const preparedCards = cards.map((c: any, j: number) => {
+      const at = `decks[${i}].cards[${j}]`;
+      if (!c || typeof c !== 'object' || Array.isArray(c))
+        throw err('VALIDATION', 'card must be an object', at);
+      if (typeof c.front !== 'string' || c.front.length < 1 || c.front.length > 4000)
+        throw err('VALIDATION', 'front length', `${at}.front`);
+      if (typeof c.back !== 'string' || c.back.length < 1 || c.back.length > 4000)
+        throw err('VALIDATION', 'back length', `${at}.back`);
+      const tags = c.tags ?? [];
+      if (!Array.isArray(tags) || tags.length > 10)
+        throw err('VALIDATION', 'too many tags (max 10)', `${at}.tags`);
+      if (tags.some((t: any) => typeof t !== 'string' || t.length < 1 || t.length > 40))
+        throw err('VALIDATION', 'invalid tag', `${at}.tags`);
+      return { front: c.front, back: c.back, tags };
+    });
+    return { name: d.name, description: d.description ?? '', cards: preparedCards };
+  });
+
+  const seenDecks = new Set<string>();
+  for (const d of preparedDecks) {
+    const key = d.name.toLowerCase();
+    if (seenDecks.has(key)) throw err('VALIDATION', 'duplicate deck name in bundle', 'decks');
+    seenDecks.add(key);
+  }
+
+  const preparedQuizzes = quizzesIn.map((q: any, i: number) => {
+    if (!q || typeof q !== 'object' || Array.isArray(q))
+      throw err('VALIDATION', 'quiz must be an object', `quizzes[${i}]`);
+    if (typeof q.title !== 'string' || q.title.length < 1 || q.title.length > 200)
+      throw err('VALIDATION', 'quiz title length', `quizzes[${i}].title`);
+    if (q.description !== undefined && (typeof q.description !== 'string' || q.description.length > 2000))
+      throw err('VALIDATION', 'quiz description too long', `quizzes[${i}].description`);
+    const questions = q.questions;
+    if (!Array.isArray(questions) || questions.length < 1 || questions.length > 100)
+      throw err('VALIDATION', 'questions array 1..100', `quizzes[${i}].questions`);
+    const preparedQuestions = questions.map((question: any, j: number) => {
+      try {
+        return validateQuestion(question, j);
+      } catch (e: any) {
+        const last = String(e.field || '').split('.').pop();
+        const hints: Record<string, string> = {
+          type: 'unknown question type',
+          prompt: 'prompt must be 1-4000 characters',
+          points: 'points must be greater than 0 and at most 100',
+          choices: 'choices must be 2-8 options',
+          correct: 'correct must reference one of the choices',
+          value: 'numeric value must be a number',
+          reference: 'reference answer is required',
+        };
+        throw err('VALIDATION', hints[last || ''] || e.message,
+          `quizzes[${i}].questions[${j}]${last ? '.' + last : ''}`);
+      }
+    });
+    return { title: q.title, description: q.description ?? '', deck: q.deck, questions: preparedQuestions };
+  });
+
+  const bundleNames = new Set(preparedDecks.map((d) => d.name.toLowerCase()));
+  for (let i = 0; i < preparedQuizzes.length; i++) {
+    const deck = preparedQuizzes[i].deck;
+    if (deck === undefined || deck === null || deck === '') continue;
+    if (typeof deck !== 'string' && typeof deck !== 'number')
+      throw err('VALIDATION', 'deck must be a name or id', `quizzes[${i}].deck`);
+    if (typeof deck === 'string' && bundleNames.has(deck.toLowerCase())) continue;
+    const existing = typeof deck === 'number'
+      ? store.get('SELECT id FROM decks WHERE id=?', [deck])
+      : store.get('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [deck]);
+    if (!existing) throw err('NOT_FOUND', 'deck not found', `quizzes[${i}].deck`);
+  }
+
+  const counts = {
+    decks_created: 0, decks_reused: 0, cards_added: 0,
+    quizzes_created: 0, questions_added: 0,
+  };
+
+  return store.tx(() => {
+    const deckIds = new Map<string, number>();
+    for (const d of preparedDecks) {
+      const key = d.name.toLowerCase();
+      const existing = store.get('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [d.name]);
+      let deckId: number;
+      if (existing) {
+        deckId = existing.id;
+        counts.decks_reused++;
+      } else {
+        const r = store.run('INSERT INTO decks (name, description) VALUES (?,?)', [d.name, d.description]);
+        deckId = Number(r.lastInsertRowid);
+        counts.decks_created++;
+      }
+      deckIds.set(key, deckId);
+      for (const c of d.cards) {
+        store.run('INSERT INTO cards (deck_id, front, back, tags_json, source) VALUES (?,?,?,?,?)',
+          [deckId, c.front, c.back, JSON.stringify(c.tags), 'import']);
+        counts.cards_added++;
+      }
+    }
+
+    for (const q of preparedQuizzes) {
+      let deckId: number | null = null;
+      if (q.deck !== undefined && q.deck !== null && q.deck !== '') {
+        if (typeof q.deck === 'string') {
+          const key = q.deck.toLowerCase();
+          const found = deckIds.get(key) ?? store.get('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [q.deck]);
+          deckId = found ? found.id : null;
+        } else {
+          deckId = Number(q.deck);
+        }
+      }
+      const r = store.run('INSERT INTO quizzes (title, description, deck_id, source) VALUES (?,?,?,?)',
+        [q.title, q.description, deckId, 'import']);
+      const quizId = Number(r.lastInsertRowid);
+      counts.quizzes_created++;
+      q.questions.forEach((question: any, i: number) => {
+        store.run('INSERT INTO questions (quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?)',
+          [quizId, i + 1, question.type, question.prompt,
+            question.choices ? JSON.stringify(question.choices) : null,
+            JSON.stringify(question.answer), question.explanation, question.points]);
+        counts.questions_added++;
+      });
+    }
+
+    return { ok: true, ...counts };
+  });
 }

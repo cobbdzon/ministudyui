@@ -1,6 +1,6 @@
 import { icon } from '../icons.js';
 import { debounce, escapeHtml as esc, renderMath } from '../math.js';
-import { dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
+import { confirmDanger, dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
 
 const LETTERS = 'ABCDEFGH';
 
@@ -139,6 +139,14 @@ export async function mount(el, ctx) {
   async function startAttempt() {
     try {
       const inProgress = attempts.find((a) => a.status === 'in_progress');
+      if (inProgress) {
+        const ok = await confirmDanger({
+          title: 'Start over?',
+          body: 'Your current attempt and all of its answers will be discarded, and a fresh attempt will begin.',
+          confirmLabel: 'Start over',
+        });
+        if (!ok) return;
+      }
       const res = inProgress
         ? await ctx.api.restartAttempt(Number(quizId))
         : await ctx.api.startAttempt(Number(quizId));

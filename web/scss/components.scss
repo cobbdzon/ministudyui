@@ -680,6 +680,53 @@ kbd {
   justify-content: space-between;
 }
 
+/* ---------- AI import dialog ---------- */
+
+.import-intro {
+  margin: 0 0 var(--space-4);
+}
+
+.import-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.import-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.import-prompt,
+.import-json {
+  width: 100%;
+  font: var(--md-sys-typescale-body-small);
+}
+
+.import-prompt {
+  max-height: 180px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.import-hint {
+  margin: var(--space-2) 0 0;
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.import-hint--error {
+  color: var(--md-sys-color-error);
+}
+
+.import-run {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
 /* ---------- Toasts ---------- */
 
 .toast-region {

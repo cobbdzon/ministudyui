@@ -154,3 +154,78 @@ test('restart discards in-progress attempts and their pending AI-graded answers'
     store.close();
   }
 });
+
+test('importBundle creates decks, cards and quizzes with import provenance', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    const result = library.importBundle({
+      decks: [{
+        name: 'ImportDeck',
+        description: 'From AI',
+        cards: [
+          { front: 'Q1', back: 'A1', tags: ['t'] },
+          { front: 'Q2', back: 'A2' },
+        ],
+      }],
+      quizzes: [{
+        title: 'ImportQuiz', deck: 'ImportDeck',
+        questions: [
+          { type: 'mcq', prompt: 'Pick', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'b' },
+          { type: 'latex', prompt: 'Show', reference: 'x^2' },
+        ],
+      }],
+    });
+    assert.deepEqual(result, {
+      ok: true, decks_created: 1, decks_reused: 0, cards_added: 2,
+      quizzes_created: 1, questions_added: 2,
+    });
+
+    assert.equal(store.all("SELECT * FROM cards WHERE source='import'").length, 2);
+    const quiz = library.quizList({})[0];
+    assert.equal(quiz.title, 'ImportQuiz');
+    const full = library.quizGet({ quizId: quiz.id, includeAnswers: true });
+    assert.equal(full.quiz.source, 'import');
+    assert.deepEqual(full.questions[0].answer, { correct: 'b' });
+    assert.equal(full.questions[1].answer.reference, 'x^2');
+
+    // Re-importing the same deck name reuses it rather than conflicting.
+    const again = library.importBundle({
+      decks: [{ name: 'importdeck', cards: [{ front: 'Q3', back: 'A3' }] }],
+    });
+    assert.equal(again.decks_reused, 1);
+    assert.equal(again.decks_created, 0);
+    assert.equal(again.cards_added, 1);
+  } finally {
+    store.close();
+  }
+});
+
+test('importBundle rejects invalid items atomically', () => {
+  store.open(':memory:');
+  store.migrate();
+  try {
+    assert.throws(
+      () => library.importBundle({
+        decks: [{ name: 'Valid', cards: [{ front: 'Q', back: 'A' }] }],
+        quizzes: [{
+          title: 'Bad',
+          questions: [{ type: 'mcq', prompt: 'P', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'z' }],
+        }],
+      }),
+      (e: any) => e.code === 'VALIDATION' && e.field === 'quizzes[0].questions[0].correct'
+    );
+    // Nothing was written: validation happens before the single transaction.
+    assert.equal(store.all('SELECT * FROM decks').length, 0);
+    assert.equal(store.all('SELECT * FROM cards').length, 0);
+    assert.equal(store.all('SELECT * FROM quizzes').length, 0);
+    assert.equal(store.all('SELECT * FROM questions').length, 0);
+
+    assert.throws(
+      () => library.importBundle({} as any),
+      (e: any) => e.code === 'VALIDATION'
+    );
+  } finally {
+    store.close();
+  }
+});
