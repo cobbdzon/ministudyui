@@ -1,7 +1,7 @@
 // Content rendering: the one place where untrusted text becomes DOM.
 // Escape first, then let KaTeX auto-render (throwOnError:false, trust:false).
 
-export function escapeHtml(s) {
+export function escapeHtml(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -10,7 +10,7 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-export function renderMath(el) {
+export function renderMath(el: Element | null | undefined): void {
   if (!el || typeof window === 'undefined' || !window.renderMathInElement) return;
   try {
     window.renderMathInElement(el, {
@@ -28,9 +28,12 @@ export function renderMath(el) {
   }
 }
 
-export function debounce(fn, ms = 150) {
-  let t;
-  const wrapped = (...args) => {
+export function debounce<A extends unknown[]>(
+  fn: (...args: A) => void,
+  ms = 150,
+): ((...args: A) => void) & { cancel(): void } {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const wrapped = (...args: A) => {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), ms);
   };

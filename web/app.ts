@@ -1,7 +1,9 @@
-import { api } from './api.js';
+import { api, errorMessage } from './api.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './math.js';
-import { dialog, toast } from './ui.js';
+import { dialog, toast, type DialogAction } from './ui.js';
+import type { AppContext, RoutedViewId, ViewId, ViewModule } from './context.js';
+import type { ChangeEvent } from '../shared/types.js';
 import * as home from './views/home.js';
 import * as review from './views/review.js';
 import * as deck from './views/deck.js';
@@ -12,25 +14,32 @@ import * as grading from './views/grading.js';
 import * as stats from './views/stats.js';
 import * as importView from './views/import.js';
 
-const app = document.getElementById('app');
+const appEl = document.getElementById('app');
+if (!appEl) throw new Error('#app not found');
+const app = appEl;
 
-const NAV = [
+interface NavItem { id: string; label: string; icon: string; href: string }
+const NAV: NavItem[] = [
   { id: 'home', label: 'Home', icon: 'home', href: '#/' },
   { id: 'quizzes', label: 'Quizzes', icon: 'quiz', href: '#/quizzes' },
   { id: 'grading', label: 'Grading', icon: 'grading', href: '#/grading' },
   { id: 'stats', label: 'Stats', icon: 'monitoring', href: '#/stats' },
 ];
 
-const VIEWS = { home, review, deck, quizzes, quiz, attempt, grading, stats };
+const VIEWS: Record<RoutedViewId, ViewModule> = { home, review, deck, quizzes, quiz, attempt, grading, stats };
+const ROUTED_IDS = new Set<string>(Object.keys(VIEWS));
+function isRoutedViewId(value: string): value is RoutedViewId {
+  return ROUTED_IDS.has(value);
+}
 
-function navItem(item, cls) {
+function navItem(item: NavItem, cls: string): string {
   return `<a class="${cls}" href="${item.href}" data-nav="${item.id}">
     ${icon(item.icon)}
     <span>${item.label}</span>
   </a>`;
 }
 
-function shell() {
+function shell(): void {
   app.innerHTML = `
     <a class="skip-link" href="#main">Skip to content</a>
     <nav class="rail" aria-label="Main">
@@ -62,13 +71,14 @@ function shell() {
 
 /* ---------- Theme ---------- */
 
-function preferredTheme() {
+type Theme = 'light' | 'dark';
+function preferredTheme(): Theme {
   const saved = localStorage.getItem('ministudy.theme');
   if (saved === 'light' || saved === 'dark') return saved;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function applyTheme(theme) {
+function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('ministudy.theme', theme);
   const slot = document.getElementById('theme-icon');
@@ -84,11 +94,12 @@ function applyTheme(theme) {
 
 /* ---------- Shortcuts ---------- */
 
-function openShortcuts() {
-  const row = (keys, label) =>
+function openShortcuts(): void {
+  const row = (keys: string[], label: string) =>
     `<div class="shortcut-row"><span>${label}</span><span class="shortcut-keys">${keys
       .map((k) => `<kbd>${escapeHtml(k)}</kbd>`)
       .join('')}</span></div>`;
+  const actions: DialogAction[] = [{ label: 'Close', value: 'close', variant: 'btn--tonal' }];
   dialog({
     title: 'Keyboard shortcuts',
     body: `
@@ -101,15 +112,15 @@ function openShortcuts() {
         ${row(['←', '→'], 'Previous or next quiz question')}
         ${row(['⌘', '↵'], 'Submit the current quiz answer')}
       </div>`,
-    actions: [{ label: 'Close', value: 'close', variant: 'btn--tonal' }],
+    actions,
   });
 }
 
 /* ---------- More sheet (mobile utilities) ---------- */
 
-let moreSheet = null;
+let moreSheet: HTMLDialogElement | null = null;
 
-function closeMoreSheet() {
+function closeMoreSheet(): void {
   if (!moreSheet) return;
   const sheet = moreSheet;
   moreSheet = null;
@@ -117,13 +128,13 @@ function closeMoreSheet() {
   setTimeout(() => sheet.close(), 170);
 }
 
-function themeAction() {
+function themeAction(): { next: Theme; icon: string; label: string } {
   const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
+  const next: Theme = current === 'dark' ? 'light' : 'dark';
   return { next, icon: next === 'dark' ? 'dark_mode' : 'light_mode', label: `Switch to ${next} theme` };
 }
 
-function openMoreSheet() {
+function openMoreSheet(): void {
   if (moreSheet) return;
   const theme = themeAction();
   const sheet = document.createElement('dialog');
@@ -167,14 +178,17 @@ function openMoreSheet() {
       closeMoreSheet();
       return;
     }
-    const action = e.target.closest('[data-sheet-action]');
+    const target = e.target instanceof Element ? e.target : null;
+    const action = target?.closest<HTMLElement>('[data-sheet-action]');
     if (!action) return;
     const kind = action.dataset.sheetAction;
     if (kind === 'theme') {
       applyTheme(themeAction().next);
       const updated = themeAction();
-      action.querySelector('.sheet__icon').innerHTML = icon(updated.icon);
-      action.querySelector('.sheet__label').textContent = updated.label;
+      const iconEl = action.querySelector<HTMLElement>('.sheet__icon');
+      const labelEl = action.querySelector<HTMLElement>('.sheet__label');
+      if (iconEl) iconEl.innerHTML = icon(updated.icon);
+      if (labelEl) labelEl.textContent = updated.label;
       return;
     }
     closeMoreSheet();
@@ -186,32 +200,31 @@ function openMoreSheet() {
 
 /* ---------- Router ---------- */
 
-let cleanup = null;
-let lastHash = null;
-let renderedView = null;
-let viewEnterTimer = null;
+let cleanup: (() => void) | null = null;
+let lastHash: string | null = null;
+let renderedView: ViewId | null = null;
+let viewEnterTimer: ReturnType<typeof setTimeout> | null = null;
 
-function parseHash() {
+function parseHash(): string[] {
   const raw = location.hash.replace(/^#\/?/, '');
-  const segments = raw.split('/').filter(Boolean);
-  return segments;
+  return raw.split('/').filter(Boolean);
 }
 
-function activeNav(viewId) {
+function activeNav(viewId: ViewId): string {
   if (viewId === 'home' || viewId === 'review' || viewId === 'deck') return 'home';
   if (viewId === 'quizzes' || viewId === 'quiz' || viewId === 'attempt') return 'quizzes';
   return viewId;
 }
 
-function setActiveNav(viewId) {
+function setActiveNav(viewId: ViewId): void {
   const active = activeNav(viewId);
-  document.querySelectorAll('[data-nav]').forEach((el) => {
+  document.querySelectorAll<HTMLElement>('[data-nav]').forEach((el) => {
     if (el.dataset.nav === active) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
 }
 
-function loadingState() {
+function loadingState(): string {
   return `<div aria-busy="true" aria-label="Loading">
     <div class="skeleton" style="width:240px;height:34px;margin:8px 0 12px"></div>
     <div class="skeleton" style="width:min(420px,80%);height:16px;margin-bottom:32px"></div>
@@ -221,7 +234,7 @@ function loadingState() {
   </div>`;
 }
 
-function errorState(message) {
+function errorState(message: string): string {
   return `<div class="empty" style="margin-top:12vh">
     <div class="empty__icon">${icon('cancel')}</div>
     <h1 class="empty__title">That didn’t load</h1>
@@ -230,35 +243,32 @@ function errorState(message) {
   </div>`;
 }
 
-const ctx = {
+const ctx: AppContext = {
   api,
   icon,
   esc: escapeHtml,
   toast,
-  go(hash) {
-    location.hash = hash;
-  },
+  go(hash) { location.hash = hash; },
   onChange(handler) {
-    const listener = (e) => handler(e.detail);
+    const listener = (e: CustomEvent<ChangeEvent[]>) => handler(e.detail);
     window.addEventListener('live:change', listener);
     return () => window.removeEventListener('live:change', listener);
   },
+  params: [],
+  viewId: 'home',
 };
 
-async function route() {
+async function route(): Promise<void> {
   const main = document.getElementById('main');
   if (!main) return;
   const segments = parseHash();
-  const viewId = segments[0] || 'home';
-  const view = VIEWS[viewId] || VIEWS.home;
+  const rawViewId = segments[0] || 'home';
+  const viewId: ViewId = isRoutedViewId(rawViewId) ? rawViewId : 'home';
+  const view = VIEWS[viewId];
   const params = segments.slice(1);
 
   if (typeof cleanup === 'function') {
-    try {
-      cleanup();
-    } catch {
-      /* a failing unmount must not stop navigation */
-    }
+    try { cleanup(); } catch { /* a failing unmount must not stop navigation */ }
   }
   cleanup = null;
 
@@ -270,7 +280,7 @@ async function route() {
 
   if (lastHash !== location.hash) {
     main.innerHTML = loadingState();
-    clearTimeout(viewEnterTimer);
+    if (viewEnterTimer) clearTimeout(viewEnterTimer);
     main.classList.remove('view-enter');
     void main.offsetWidth;
     main.classList.add('view-enter');
@@ -284,17 +294,17 @@ async function route() {
   } catch (err) {
     console.error(err);
     document.body.classList.remove('focus-mode');
-    main.innerHTML = errorState(err?.message);
-    document.getElementById('retry')?.addEventListener('click', () => route());
+    main.innerHTML = errorState(errorMessage(err));
+    document.getElementById('retry')?.addEventListener('click', () => { void route(); });
   }
 }
 
 /* ---------- Live updates ---------- */
 
-function batchChanges(subscribe) {
-  let queue = [];
-  let timer = null;
-  return subscribe((change) => {
+function batchChanges(subscribe: (cb: (c: ChangeEvent) => void) => () => void): void {
+  let queue: ChangeEvent[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  subscribe((change) => {
     if (!change) return;
     queue.push(change);
     if (timer) return;
@@ -308,7 +318,7 @@ function batchChanges(subscribe) {
       const cards = changes.filter((c) => c.entity === 'card' && c.op === 'insert').length;
       const quizzesAdded = changes.filter((c) => c.entity === 'quiz' && c.op === 'insert').length;
       const graded = changes.filter(
-        (c) => c.entity === 'answer' && c.op === 'update' && renderedView === 'grading'
+        (c) => c.entity === 'answer' && c.op === 'update' && renderedView === 'grading',
       ).length;
       if (cards) toast(`${cards === 1 ? 'A card was' : `${cards} cards were`} added`, { icon: 'style' });
       if (quizzesAdded) toast(`${quizzesAdded === 1 ? 'A quiz was' : `${quizzesAdded} quizzes were`} added`, { icon: 'quiz' });
@@ -330,15 +340,16 @@ document.getElementById('import')?.addEventListener('click', () => importView.op
 document.getElementById('more')?.addEventListener('click', openMoreSheet);
 
 document.addEventListener('keydown', (e) => {
-  const tag = (e.target.tagName || '').toLowerCase();
-  const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+  const target = e.target instanceof Element ? e.target : null;
+  const tag = (target?.tagName || '').toLowerCase();
+  const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || (target instanceof HTMLElement && target.isContentEditable);
   if (e.key === '?' && !typing && !document.querySelector('dialog[open]')) {
     e.preventDefault();
     openShortcuts();
   }
 });
 
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => { void route(); });
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
   if (!localStorage.getItem('ministudy.theme')) applyTheme(preferredTheme());
 });
@@ -349,4 +360,4 @@ try {
   /* live updates are a bonus; the app works without them */
 }
 
-route();
+void route();

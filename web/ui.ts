@@ -1,28 +1,29 @@
 import { icon } from './icons.js';
 import { messages } from './messages.js';
 import { escapeHtml } from './math.js';
+import type { DeckSummary, QuestionType, Source } from '../shared/types.js';
 
 /* ---------- Formatting ---------- */
 
-export function fmtInterval(value) {
+export function fmtInterval(value: unknown): string {
   if (typeof value === 'number') value = `${value}`;
   return escapeHtml(String(value ?? '—'));
 }
 
-export function fmtScore(score, max) {
+export function fmtScore(score: number | null | undefined, max: number | null | undefined): string {
   if (score === null || score === undefined) return '—';
   const s = Number(score);
   const m = Number(max);
-  const clean = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, ''));
+  const clean = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, ''));
   return m ? `${clean(s)} / ${clean(m)}` : clean(s);
 }
 
-export function fmtPercent(n, digits = 0) {
+export function fmtPercent(n: unknown, digits = 0): string {
   if (n === null || n === undefined || Number.isNaN(Number(n))) return '—';
   return `${Number(n).toFixed(digits)}%`;
 }
 
-export function relTime(iso) {
+export function relTime(iso: string | null | undefined): string {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
@@ -37,20 +38,20 @@ export function relTime(iso) {
   return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function longDate(date = new Date()) {
+export function longDate(date = new Date()): string {
   return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export function localTime(date = new Date()) {
+export function localTime(date = new Date()): string {
   return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function pick(options) {
+function pick(options: string[]): string {
   if (!options?.length) return '';
-  return options[Math.floor(Math.random() * options.length)];
+  return options[Math.floor(Math.random() * options.length)] ?? '';
 }
 
-export function greeting(date = new Date()) {
+export function greeting(date = new Date()): string {
   const h = date.getHours();
   const g = messages.greeting;
   if (h < 5) return pick(g.lateNight);
@@ -59,31 +60,30 @@ export function greeting(date = new Date()) {
   return pick(g.evening);
 }
 
-export function plural(n, one, many = `${one}s`) {
+export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-export function pct(part, total) {
+export function pct(part: number, total: number): number {
   if (!total) return 0;
   return Math.round((Number(part) / Number(total)) * 100);
 }
 
-export function typeLabel(type) {
-  return (
-    {
-      mcq: 'Multiple choice',
-      multi: 'Select all',
-      numeric: 'Numeric',
-      short: 'Short answer',
-      latex: 'Show your work',
-    }[type] || type
-  );
+const TYPE_LABELS: Record<QuestionType, string> = {
+  mcq: 'Multiple choice',
+  multi: 'Select all',
+  numeric: 'Numeric',
+  short: 'Short answer',
+  latex: 'Show your work',
+};
+export function typeLabel(type: QuestionType): string {
+  return TYPE_LABELS[type] || type;
 }
 
 /* ---------- Status renderers ---------- */
 
-export function statusChip(status) {
-  const map = {
+export function statusChip(status: string): string {
+  const map: Record<string, [string, string]> = {
     graded: ['success', 'Graded'],
     submitted: ['warning', 'Awaiting grading'],
     in_progress: ['tonal', 'In progress'],
@@ -92,18 +92,20 @@ export function statusChip(status) {
   return `<span class="chip chip--${tone}">${escapeHtml(label)}</span>`;
 }
 
-export function sourceMark(source) {
-  const map = { ai: ['auto_awesome', 'AI'], user: ['edit', 'You'], import: ['download', 'Imported'] };
+export function sourceMark(source: Source): string {
+  const map: Record<string, [string, string]> = {
+    ai: ['auto_awesome', 'AI'], user: ['edit', 'You'], import: ['download', 'Imported'],
+  };
   const [iconName, label] = map[source] || ['edit', 'You'];
   return `<span class="source" title="Source: ${escapeHtml(label)}">${icon(iconName)}${escapeHtml(label)}</span>`;
 }
 
-export function deckMeter(deck) {
+export function deckMeter(deck: DeckSummary): string {
   const total = Math.max(Number(deck.total) || 0, 0);
   const newCount = Math.max(Number(deck.new) || 0, 0);
   const mature = Math.max(Number(deck.mature) || 0, 0);
   const learning = Math.max(total - newCount - mature, 0);
-  const segs = [
+  const segs: Array<[string, number]> = [
     ['mature', mature],
     ['learning', learning],
     ['new', newCount],
@@ -117,13 +119,12 @@ export function deckMeter(deck) {
   )}">${parts || '<span class="meter__seg meter__seg--rest" style="flex:1"></span>'}</div>`;
 }
 
-export function heatmap(days = []) {
+export function heatmap(days: Array<{ day: string; n: number }> = []): string {
   // days: [{day:'YYYY-MM-DD', n}] newest last. Always render 14 whole weeks.
   const map = new Map(days.map((d) => [String(d.day).slice(0, 10), Number(d.n) || 0]));
   const max = Math.max(1, ...map.values());
   const today = new Date();
   today.setHours(12, 0, 0, 0);
-  // Move to the end of this week (Saturday), then start 14 weeks earlier on Sunday.
   const end = new Date(today);
   end.setDate(end.getDate() + (6 - end.getDay()));
   const start = new Date(end);
@@ -149,9 +150,12 @@ export function heatmap(days = []) {
 
 /* ---------- Toasts ---------- */
 
-let toastRegion = null;
+let toastRegion: HTMLDivElement | null = null;
 
-export function toast(message, opts = {}) {
+export function toast(
+  message: string,
+  opts: { type?: 'success' | 'error' | 'info'; icon?: string; duration?: number } = {},
+): void {
   if (!toastRegion) {
     toastRegion = document.createElement('div');
     toastRegion.className = 'toast-region';
@@ -172,7 +176,15 @@ export function toast(message, opts = {}) {
 
 /* ---------- Dialogs ---------- */
 
-export function dialog({ title, body = '', actions = [], wide = false, onMount }) {
+export interface DialogAction {
+  label: string; value?: string; variant?: string; icon?: string; danger?: boolean;
+}
+export interface DialogOptions {
+  title: string; body?: string; actions?: DialogAction[]; wide?: boolean;
+  onMount?: (root: HTMLElement, close: (value: string) => void) => void;
+}
+
+export function dialog({ title, body = '', actions = [], wide = false, onMount }: DialogOptions): Promise<string> {
   return new Promise((resolve) => {
     const root = document.createElement('dialog');
     root.className = `dialog${wide ? ' dialog--wide' : ''}`;
@@ -195,7 +207,7 @@ export function dialog({ title, body = '', actions = [], wide = false, onMount }
         </div>
       </form>`;
     document.body.appendChild(root);
-    const close = (value) => {
+    const close = (value: string) => {
       resolve(value);
       if (root.classList.contains('is-closing')) return;
       root.classList.add('is-closing');
@@ -218,16 +230,18 @@ export function dialog({ title, body = '', actions = [], wide = false, onMount }
     });
     root.addEventListener('submit', (e) => {
       e.preventDefault();
-      const submitter = e.submitter;
-      if (submitter && submitter.value) close(submitter.value);
+      const submitter = (e as SubmitEvent).submitter as HTMLButtonElement | null;
+      if (submitter?.value) close(submitter.value);
     });
     if (onMount) onMount(root, close);
     root.showModal();
-    root.querySelector('.dialog__body input, .dialog__body textarea, .dialog__body button')?.focus();
+    root.querySelector<HTMLElement>('.dialog__body input, .dialog__body textarea, .dialog__body button')?.focus();
   });
 }
 
-export async function confirmDanger({ title, body, confirmLabel = 'Delete' }) {
+export async function confirmDanger({
+  title, body, confirmLabel = 'Delete',
+}: { title: string; body: string; confirmLabel?: string }): Promise<boolean> {
   const value = await dialog({
     title,
     body: `<p>${escapeHtml(body)}</p>`,
@@ -241,10 +255,9 @@ export async function confirmDanger({ title, body, confirmLabel = 'Delete' }) {
 
 /* ---------- SVG chart ---------- */
 
-export function activityChart(days, { weeks = 30 } = {}) {
-  // Fill a continuous window with zeroes so the chart is honest about quiet days.
+export function activityChart(days: Array<{ day: string; n: number }>, { weeks = 30 } = {}): string {
   const map = new Map(days.map((d) => [String(d.day).slice(0, 10), Number(d.n) || 0]));
-  const series = [];
+  const series: Array<{ date: Date; n: number }> = [];
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   for (let i = weeks - 1; i >= 0; i--) {
@@ -314,7 +327,10 @@ const MIX_BUCKETS = [
   { key: 'mature', label: 'Mature' },
 ];
 
-export function mixPieChart(mix = [], { buckets = MIX_BUCKETS } = {}) {
+export function mixPieChart(
+  mix: Array<{ bucket: string; cards: number }> = [],
+  { buckets = MIX_BUCKETS }: { buckets?: Array<{ key: string; label: string }> } = {},
+): string {
   const values = buckets.map((b) => ({
     ...b,
     value: Math.max(Number(mix.find((m) => m.bucket === b.key)?.cards) || 0, 0),
@@ -373,20 +389,25 @@ export function mixPieChart(mix = [], { buckets = MIX_BUCKETS } = {}) {
 
 /* ---------- Small DOM helpers ---------- */
 
-export function qs(sel, root = document) {
-  return root.querySelector(sel);
+export function qs<T extends Element = HTMLElement>(sel: string, root: ParentNode = document): T | null {
+  return root.querySelector<T>(sel);
 }
 
-export function qsa(sel, root = document) {
-  return [...root.querySelectorAll(sel)];
+export function qsa<T extends Element = HTMLElement>(sel: string, root: ParentNode = document): T[] {
+  return [...root.querySelectorAll<T>(sel)];
 }
 
-export function on(root, event, handler, opts) {
+export function on(
+  root: EventTarget,
+  event: string,
+  handler: EventListenerOrEventListenerObject,
+  opts?: AddEventListenerOptions,
+): () => void {
   root.addEventListener(event, handler, opts);
   return () => root.removeEventListener(event, handler, opts);
 }
 
-export function busy(button, value = true) {
+export function busy(button: HTMLButtonElement | null | undefined, value = true): void {
   if (!button) return;
   button.disabled = value;
   button.setAttribute('aria-busy', value ? 'true' : 'false');

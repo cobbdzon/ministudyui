@@ -1,10 +1,13 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc, renderMath } from '../math.js';
 import { plural, toast, typeLabel } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { ChangeEvent } from '../../shared/types.js';
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   let disposed = false;
-  let refreshTimer = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function render() {
     const data = await ctx.api.pending(20);
@@ -86,8 +89,8 @@ export async function mount(el, ctx) {
 
     el.querySelectorAll('[data-math]').forEach((node) => renderMath(node));
 
-    el.querySelectorAll('.grade-form').forEach((form) => {
-      form.addEventListener('submit', async (e) => {
+    el.querySelectorAll<HTMLFormElement>('.grade-form').forEach((form) => {
+      form.addEventListener('submit', async (e: Event) => {
         e.preventDefault();
         const answerId = Number(form.dataset.answer);
         const max = Number(form.dataset.max);
@@ -101,7 +104,7 @@ export async function mount(el, ctx) {
           toast('Add a short note for the student', { type: 'error' });
           return;
         }
-        const btn = form.querySelector('button[type="submit"]');
+        const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
         if (btn) {
           btn.disabled = true;
           btn.textContent = 'Saving…';
@@ -111,7 +114,7 @@ export async function mount(el, ctx) {
           toast('Grade saved and score updated');
           await render();
         } catch (err) {
-          toast(err.message || 'Could not save the grade', { type: 'error' });
+          toast(errorMessage(err, 'Could not save the grade'), { type: 'error' });
           if (btn) {
             btn.disabled = false;
             btn.textContent = 'Save grade';
@@ -127,7 +130,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">The grading queue didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The local server did not answer.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The local server did not answer.'))}</p>
       <button class="btn btn--tonal" id="grading-retry">Try again</button>
     </div>`;
     el.querySelector('#grading-retry')?.addEventListener('click', () => render().catch(() => {}));
@@ -136,9 +139,9 @@ export async function mount(el, ctx) {
     };
   }
 
-  const off = ctx.onChange((changes) => {
-    if (!changes.some((c) => c.entity === 'answer' || c.entity === 'attempt')) return;
-    clearTimeout(refreshTimer);
+  const off = ctx.onChange((changes: ChangeEvent[]) => {
+    if (!changes.some((c: ChangeEvent) => c.entity === 'answer' || c.entity === 'attempt')) return;
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed) return;
       render().catch(() => {});
@@ -147,7 +150,7 @@ export async function mount(el, ctx) {
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }

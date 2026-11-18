@@ -11,13 +11,22 @@ import {
   relTime,
   toast,
 } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { AttemptRow, DeckSummary, PendingAnswerDto, QuizSummary, StatsDto } from '../../shared/types.js';
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   let disposed = false;
   let refreshing = false;
-  let refreshTimer = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-  async function load() {
+  async function load(): Promise<{
+    decks: DeckSummary[];
+    stats: StatsDto;
+    pending: PendingAnswerDto[];
+    attempts: AttemptRow[];
+    quizzes: QuizSummary[];
+  }> {
     const [decksRes, statsRes, pendingRes, attemptsRes, quizzesRes] = await Promise.allSettled([
       ctx.api.decks(),
       ctx.api.stats(),
@@ -25,15 +34,15 @@ export async function mount(el, ctx) {
       ctx.api.attempts({ limit: 4 }),
       ctx.api.quizzes(),
     ]);
-    const decks = decksRes.status === 'fulfilled' ? decksRes.value.decks || [] : [];
-    const stats = statsRes.status === 'fulfilled' ? statsRes.value || {} : {};
-    const pending = pendingRes.status === 'fulfilled' ? pendingRes.value.answers || [] : [];
-    const attempts = attemptsRes.status === 'fulfilled' ? attemptsRes.value.attempts || [] : [];
-    const quizzes = quizzesRes.status === 'fulfilled' ? quizzesRes.value.quizzes || [] : [];
+    const decks: DeckSummary[] = decksRes.status === 'fulfilled' ? decksRes.value.decks || [] : [];
+    const stats: StatsDto = statsRes.status === 'fulfilled' ? statsRes.value || ({} as StatsDto) : ({} as StatsDto);
+    const pending: PendingAnswerDto[] = pendingRes.status === 'fulfilled' ? pendingRes.value.answers || [] : [];
+    const attempts: AttemptRow[] = attemptsRes.status === 'fulfilled' ? attemptsRes.value.attempts || [] : [];
+    const quizzes: QuizSummary[] = quizzesRes.status === 'fulfilled' ? quizzesRes.value.quizzes || [] : [];
     return { decks, stats, pending, attempts, quizzes };
   }
 
-  function deckRow(d, quizzes) {
+  function deckRow(d: DeckSummary, quizzes: QuizSummary[]): string {
     const learning = Math.max((Number(d.total) || 0) - (Number(d.new) || 0) - (Number(d.mature) || 0), 0);
     const linked = quizzes.filter((q) => String(q.deck_id) === String(d.id));
     return `<a class="list__row" href="#/deck/${d.id}">
@@ -68,7 +77,7 @@ export async function mount(el, ctx) {
     </a>`;
   }
 
-  function attemptRow(a, quizzes) {
+  function attemptRow(a: AttemptRow, quizzes: QuizSummary[]): string {
     const quiz = quizzes.find((q) => Number(q.id) === Number(a.quiz_id));
     const title = quiz ? quiz.title : `Quiz ${a.quiz_id}`;
     const href = a.status === 'in_progress' ? `#/quiz/${a.quiz_id}` : `#/attempt/${a.id}`;
@@ -99,7 +108,7 @@ export async function mount(el, ctx) {
     </a>`;
   }
 
-  async function render() {
+  async function render(): Promise<void> {
     const { decks, stats, pending, attempts, quizzes } = await load();
     if (disposed) return;
 
@@ -208,19 +217,19 @@ export async function mount(el, ctx) {
     bind(decks, quizzes);
   }
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     if (refreshing || disposed) return;
     refreshing = true;
     try {
       await render();
     } catch (err) {
-      ctx.toast(err?.message || 'Could not refresh home', { type: 'error' });
+      ctx.toast(errorMessage(err, 'Could not refresh home'), { type: 'error' });
     } finally {
       refreshing = false;
     }
   }
 
-  function openNewDeck() {
+  function openNewDeck(): void {
     dialog({
       title: 'New deck',
       body: `
@@ -239,12 +248,12 @@ export async function mount(el, ctx) {
         { label: 'Create deck', value: 'create', variant: 'btn--filled' },
       ],
       onMount(root) {
-        const submit = async (e) => {
-          if (e.submitter?.value !== 'create') return;
-          const name = root.querySelector('#deck-name').value.trim();
-          const description = root.querySelector('#deck-desc').value.trim();
+        const submit = async (e: SubmitEvent) => {
+          if ((e.submitter as HTMLButtonElement | null)?.value !== 'create') return;
+          const name = root.querySelector<HTMLInputElement>('#deck-name')?.value.trim();
+          const description = root.querySelector<HTMLTextAreaElement>('#deck-desc')?.value.trim();
           if (!name) {
-            root.querySelector('#deck-name').focus();
+            root.querySelector<HTMLInputElement>('#deck-name')?.focus();
             ctx.toast('Give the deck a name first', { type: 'error' });
             return;
           }
@@ -253,7 +262,7 @@ export async function mount(el, ctx) {
             ctx.toast(`Deck “${name}” created`);
             await refresh();
           } catch (err) {
-            ctx.toast(err.message || 'Could not create the deck', { type: 'error' });
+            ctx.toast(errorMessage(err, 'Could not create the deck'), { type: 'error' });
           }
         };
         root.addEventListener('submit', submit);
@@ -261,7 +270,7 @@ export async function mount(el, ctx) {
     });
   }
 
-  function openRenameDeck(deck) {
+  function openRenameDeck(deck: DeckSummary): void {
     dialog({
       title: 'Rename deck',
       body: `
@@ -274,12 +283,12 @@ export async function mount(el, ctx) {
         { label: 'Save name', value: 'rename', variant: 'btn--filled' },
       ],
       onMount(root) {
-        const input = root.querySelector('#deck-rename-name');
+        const input = root.querySelector<HTMLInputElement>('#deck-rename-name');
         input?.focus();
         input?.select();
-        root.addEventListener('submit', async (e) => {
-          if (e.submitter?.value !== 'rename') return;
-          const name = input.value.trim();
+        root.addEventListener('submit', async (e: SubmitEvent) => {
+          if ((e.submitter as HTMLButtonElement | null)?.value !== 'rename') return;
+          const name = input?.value.trim();
           if (!name) {
             ctx.toast('Give the deck a name first', { type: 'error' });
             return;
@@ -290,17 +299,17 @@ export async function mount(el, ctx) {
             ctx.toast(`Deck renamed to “${name}”`);
             await refresh();
           } catch (err) {
-            ctx.toast(err.message || 'Could not rename the deck', { type: 'error' });
+            ctx.toast(errorMessage(err, 'Could not rename the deck'), { type: 'error' });
           }
         });
       },
     });
   }
 
-  function bind(decks, quizzes) {
+  function bind(decks: DeckSummary[], quizzes: QuizSummary[]): void {
     el.querySelector('#new-deck')?.addEventListener('click', openNewDeck);
     el.querySelector('#new-deck-empty')?.addEventListener('click', openNewDeck);
-    el.querySelectorAll('[data-rename]').forEach((btn) => {
+    el.querySelectorAll<HTMLElement>('[data-rename]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -308,8 +317,8 @@ export async function mount(el, ctx) {
         if (deck) openRenameDeck(deck);
       });
     });
-    el.querySelectorAll('.deck-row__quizzes').forEach((chip) => {
-      const go = (e) => {
+    el.querySelectorAll<HTMLElement>('.deck-row__quizzes').forEach((chip) => {
+      const go = (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
         ctx.go(chip.dataset.deck ? `#/quiz/${chip.dataset.deck}` : '#/quizzes');
@@ -331,7 +340,7 @@ export async function mount(el, ctx) {
   const off = ctx.onChange((changes) => {
     const relevant = changes.some((c) => ['deck', 'card', 'attempt', 'answer', 'review'].includes(c.entity));
     if (!relevant) return;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(refresh, 400);
   });
 
@@ -341,7 +350,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">Home didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The local server did not answer.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The local server did not answer.'))}</p>
       <button class="btn btn--tonal" id="home-retry">Try again</button>
     </div>`;
     el.querySelector('#home-retry')?.addEventListener('click', () => render().catch(() => {}));
@@ -349,7 +358,7 @@ export async function mount(el, ctx) {
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }

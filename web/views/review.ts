@@ -1,25 +1,34 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc, renderMath } from '../math.js';
 import { plural, sourceMark, toast } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { DeckSummary, Rating, ReviewCardDto } from '../../shared/types.js';
 
-const RATINGS = [
+const RATINGS: Array<{
+  rating: Rating;
+  label: string;
+  key: string;
+  cls: string;
+  preview: 'again' | 'hard' | 'good' | 'easy';
+}> = [
   { rating: 0, label: 'Again', key: '1', cls: 'rating--again', preview: 'again' },
   { rating: 1, label: 'Hard', key: '2', cls: 'rating--hard', preview: 'hard' },
   { rating: 2, label: 'Good', key: '3', cls: 'rating--good', preview: 'good' },
   { rating: 3, label: 'Easy', key: '4', cls: 'rating--easy', preview: 'easy' },
 ];
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   document.body.classList.add('focus-mode');
 
   const deckParam = ctx.params[0];
-  let cards = [];
+  let cards: ReviewCardDto[] = [];
   let deckName = 'Review';
-  let deckId = deckParam;
+  let deckId: string | number = deckParam;
   let reviewed = 0;
   let again = 0;
   let flipped = false;
-  let lastRated = null;
+  let lastRated: { card: ReviewCardDto; rating: Rating } | null = null;
   let busyRating = false;
   let startedAt = Date.now();
   let disposed = false;
@@ -35,31 +44,31 @@ export async function mount(el, ctx) {
     <p class="sr-only" id="review-announce" aria-live="polite"></p>
   </div>`;
 
-  const stage = el.querySelector('#review-stage');
-  const titleEl = el.querySelector('#review-title');
-  const countEl = el.querySelector('#review-count');
-  const barEl = el.querySelector('#review-bar');
-  const announceEl = el.querySelector('#review-announce');
+  const stage = el.querySelector('#review-stage') as HTMLElement;
+  const titleEl = el.querySelector('#review-title') as HTMLElement;
+  const countEl = el.querySelector('#review-count') as HTMLElement;
+  const barEl = el.querySelector('#review-bar') as HTMLElement;
+  const announceEl = el.querySelector('#review-announce') as HTMLElement;
 
-  el.querySelector('#exit').addEventListener('click', () => {
+  el.querySelector('#exit')?.addEventListener('click', () => {
     location.hash = '#/';
   });
 
-  function announce(message) {
+  function announce(message: string): void {
     announceEl.textContent = '';
     setTimeout(() => {
       announceEl.textContent = message;
     }, 40);
   }
 
-  function updateProgress() {
+  function updateProgress(): void {
     const total = reviewed + cards.length;
     countEl.textContent = total ? `${reviewed} / ${total}` : '';
     barEl.style.width = total ? `${(reviewed / total) * 100}%` : '0%';
     titleEl.textContent = deckName;
   }
 
-  function cardFace(card) {
+  function cardFace(card: ReviewCardDto): string {
     const tags = (card.tags || []).map((t) => `<span class="chip chip--plain">${esc(t)}</span>`).join('');
     return `<div class="study-card-wrap" id="card-wrap">
       <div class="study-card" id="study-card" data-flipped="false">
@@ -87,7 +96,7 @@ export async function mount(el, ctx) {
     </div>`;
   }
 
-  function doneState() {
+  function doneState(): string {
     const minutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
     return `<div class="session-complete">
       <div class="session-complete__icon">${icon('check')}</div>
@@ -114,7 +123,7 @@ export async function mount(el, ctx) {
     </div>`;
   }
 
-  function caughtUpState() {
+  function caughtUpState(): string {
     return `<div class="session-complete">
       <div class="session-complete__icon">${icon('check_circle')}</div>
       <h1 class="session-complete__title">All caught up.</h1>
@@ -130,7 +139,7 @@ export async function mount(el, ctx) {
     </div>`;
   }
 
-  function ratingGrid(card) {
+  function ratingGrid(card: ReviewCardDto): string {
     return `<div class="rating-grid" id="rating-grid" tabindex="-1" role="group" aria-label="Rate how well you knew this">
       ${RATINGS.map(
         (r) => `<button class="rating ${r.cls}" data-rating="${r.rating}">
@@ -146,7 +155,7 @@ export async function mount(el, ctx) {
     </div>`;
   }
 
-  function render() {
+  function render(): void {
     updateProgress();
     if (!cards.length) {
       stage.innerHTML = reviewed ? doneState() : caughtUpState();
@@ -166,11 +175,11 @@ export async function mount(el, ctx) {
     bindCard(card);
     renderMath(stage);
     requestAnimationFrame(() => {
-      stage.querySelector('#reveal')?.focus({ preventScroll: true });
+      stage.querySelector<HTMLElement>('#reveal')?.focus({ preventScroll: true });
     });
   }
 
-  function bindDone() {
+  function bindDone(): void {
     stage.querySelector('#review-again')?.addEventListener('click', async () => {
       try {
         const data = await ctx.api.reviewQueue(deckId, 10);
@@ -181,12 +190,12 @@ export async function mount(el, ctx) {
         startedAt = Date.now();
         render();
       } catch (err) {
-        toast(err.message || 'Could not load the queue', { type: 'error' });
+        toast(errorMessage(err, 'Could not load the queue'), { type: 'error' });
       }
     });
   }
 
-  function reveal() {
+  function reveal(): void {
     if (flipped) return;
     const card = cards[0];
     if (!card) return;
@@ -195,9 +204,9 @@ export async function mount(el, ctx) {
     const slot = stage.querySelector('#controls-slot');
     if (slot) {
       slot.outerHTML = ratingGrid(card);
-      stage.querySelector('#rating-grid')?.focus({ preventScroll: true });
-      stage.querySelectorAll('[data-rating]').forEach((btn) => {
-        btn.addEventListener('click', () => rate(Number(btn.dataset.rating)));
+      stage.querySelector<HTMLElement>('#rating-grid')?.focus({ preventScroll: true });
+      stage.querySelectorAll<HTMLElement>('[data-rating]').forEach((btn) => {
+        btn.addEventListener('click', () => rate(Number(btn.dataset.rating) as Rating));
       });
       stage.querySelector('#undo')?.addEventListener('click', undo);
       renderMath(stage.querySelector('#rating-grid'));
@@ -205,11 +214,11 @@ export async function mount(el, ctx) {
     announce('Answer revealed. Rate from 1 to 4.');
   }
 
-  async function rate(rating) {
+  async function rate(rating: Rating): Promise<void> {
     if (busyRating || !flipped || !cards.length) return;
     const card = cards[0];
     busyRating = true;
-    stage.querySelectorAll('[data-rating]').forEach((b) => {
+    stage.querySelectorAll<HTMLButtonElement>('[data-rating]').forEach((b) => {
       b.disabled = true;
     });
     try {
@@ -222,8 +231,8 @@ export async function mount(el, ctx) {
       render();
       announce(`Rated ${RATINGS[rating].label}. ${cards.length} ${cards.length === 1 ? 'card' : 'cards'} left.`);
     } catch (err) {
-      toast(err.message || 'Could not save the review', { type: 'error' });
-      stage.querySelectorAll('[data-rating]').forEach((b) => {
+      toast(errorMessage(err, 'Could not save the review'), { type: 'error' });
+      stage.querySelectorAll<HTMLButtonElement>('[data-rating]').forEach((b) => {
         b.disabled = false;
       });
     } finally {
@@ -231,7 +240,7 @@ export async function mount(el, ctx) {
     }
   }
 
-  async function undo() {
+  async function undo(): Promise<void> {
     if (!lastRated) return;
     try {
       await ctx.api.undo();
@@ -243,18 +252,19 @@ export async function mount(el, ctx) {
       announce('Last rating undone.');
       toast('Rating undone');
     } catch (err) {
-      toast(err.message || 'Nothing to undo', { type: 'error' });
+      toast(errorMessage(err, 'Nothing to undo'), { type: 'error' });
     }
   }
 
-  function bindCard(card) {
+  function bindCard(card: ReviewCardDto): void {
     stage.querySelector('#reveal')?.addEventListener('click', reveal);
   }
 
-  function onKey(e) {
+  function onKey(e: KeyboardEvent): void {
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
-    const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    const target = e.target instanceof HTMLElement ? e.target : null;
+    const tag = (target?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return;
     if (e.key === 'Escape') {
       location.hash = '#/';
       return;
@@ -266,7 +276,7 @@ export async function mount(el, ctx) {
     }
     if (flipped && ['1', '2', '3', '4'].includes(e.key)) {
       e.preventDefault();
-      rate(Number(e.key) - 1);
+      rate((Number(e.key) - 1) as Rating);
       return;
     }
     if (e.key.toLowerCase() === 'u') {
@@ -278,9 +288,9 @@ export async function mount(el, ctx) {
   document.addEventListener('keydown', onKey);
 
   try {
-    const deckData = await ctx.api.decks().catch(() => ({ decks: [] }));
+    const deckData = await ctx.api.decks().catch(() => ({ decks: [] } as { decks: DeckSummary[] }));
     const decks = deckData.decks || [];
-    let deck = decks.find((d) => String(d.id) === String(deckId));
+    let deck: DeckSummary | undefined = decks.find((d) => String(d.id) === String(deckId));
     if (!deck && !deckParam && decks.length) {
       deck = [...decks].sort((a, b) => (b.due || 0) - (a.due || 0))[0];
     }
@@ -300,7 +310,7 @@ export async function mount(el, ctx) {
     stage.innerHTML = `<div class="empty">
       <div class="empty__icon">${icon('cancel')}</div>
       <h1 class="empty__title">Review didn’t load</h1>
-      <p class="empty__body">${esc(err.message || 'Could not reach the review queue.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'Could not reach the review queue.'))}</p>
       <a class="btn btn--tonal" href="#/">Back home</a>
     </div>`;
   }

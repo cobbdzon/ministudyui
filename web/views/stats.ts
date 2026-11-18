@@ -1,10 +1,13 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc } from '../math.js';
 import { activityChart, fmtPercent, mixPieChart, plural, toast } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { ChangeEvent } from '../../shared/types.js';
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   let disposed = false;
-  let refreshTimer = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function render() {
     const [statsRes, decksRes] = await Promise.allSettled([ctx.api.stats(), ctx.api.decks()]);
@@ -159,7 +162,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">Stats didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The local server did not answer.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The local server did not answer.'))}</p>
       <button class="btn btn--tonal" id="stats-retry">Try again</button>
     </div>`;
     el.querySelector('#stats-retry')?.addEventListener('click', () => render().catch(() => {}));
@@ -168,9 +171,9 @@ export async function mount(el, ctx) {
     };
   }
 
-  const off = ctx.onChange((changes) => {
-    if (!changes.some((c) => ['review', 'card', 'answer', 'deck'].includes(c.entity))) return;
-    clearTimeout(refreshTimer);
+  const off = ctx.onChange((changes: ChangeEvent[]) => {
+    if (!changes.some((c: ChangeEvent) => ['review', 'card', 'answer', 'deck'].includes(c.entity))) return;
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed) return;
       render().catch(() => toast('Could not refresh stats', { type: 'error' }));
@@ -179,7 +182,7 @@ export async function mount(el, ctx) {
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }
