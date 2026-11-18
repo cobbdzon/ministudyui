@@ -151,6 +151,16 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     </div>`;
   }
 
+  // There is only something to undo once a card in this batch has been rated.
+  // `lastRated` is cleared on undo, so the button stays truthful about what it can restore.
+  function canUndo(): boolean {
+    return lastRated !== null;
+  }
+
+  function undoButton(): string {
+    return `<button class="btn btn--text btn--sm" id="undo">${icon('undo')}Undo last</button>`;
+  }
+
   function ratingGrid(card: ReviewCardDto): string {
     return `<div class="rating-grid" id="rating-grid" tabindex="-1" role="group" aria-label="Rate how well you knew this">
       ${RATINGS.map(
@@ -162,7 +172,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       ).join('')}
     </div>
     <div class="review-foot">
-      <button class="btn btn--text btn--sm" id="undo" ${lastRated ? '' : 'disabled'}>${icon('undo')}Undo last</button>
+      ${canUndo() ? undoButton() : '<span aria-hidden="true"></span>'}
       <span class="review-hint"><kbd>1</kbd>–<kbd>4</kbd> to rate · <kbd>Esc</kbd> to leave</span>
     </div>`;
   }
@@ -178,11 +188,17 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     }
     const card = cards[0];
     flipped = false;
+    const foot = canUndo()
+      ? `<div class="review-foot">
+          ${undoButton()}
+          <span class="review-hint"><kbd>Space</kbd> to reveal</span>
+        </div>`
+      : `<p class="review-hint"><kbd>Space</kbd> to reveal</p>`;
     stage.innerHTML = `${cardFace(card)}
       <div class="review-controls" id="review-controls">
         <div id="controls-slot">
           <button class="btn btn--filled btn--lg" id="reveal">Show answer</button>
-          <p class="review-hint"><kbd>Space</kbd> to reveal</p>
+          ${foot}
         </div>
       </div>`;
     bindCard(card);
@@ -272,6 +288,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
 
   function bindCard(card: ReviewCardDto): void {
     stage.querySelector('#reveal')?.addEventListener('click', reveal);
+    stage.querySelector('#undo')?.addEventListener('click', undo);
   }
 
   function onKey(e: KeyboardEvent): void {
