@@ -110,7 +110,7 @@ function route(req: any, res: any) {
       // Cards
       if (method === 'GET' && p === '/api/cards') {
         const q = url.searchParams;
-        return send(res, 200, library.cardSearch({ query: q.get('q') || undefined, deck: q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined, tag: q.get('tag') || undefined, source: q.get('source') || undefined, limit: Number(q.get('limit') || 0) || 20, offset: Number(q.get('offset') || 0) || 0 }));
+        return send(res, 200, library.cardSearch({ query: q.get('q') || undefined, deck: q.get('deck') ? (isNaN(Number(q.get('deck'))) ? (q.get('deck') || undefined) : Number(q.get('deck') || 0)) : undefined, tag: q.get('tag') || undefined, source: q.get('source') || undefined, limit: Number(q.get('limit') || 0) || 20, offset: Number(q.get('offset') || 0) || 0 }));
       }
       if (method === 'POST' && p === '/api/cards') {
         const b = await parseBody(req);
@@ -131,7 +131,7 @@ function route(req: any, res: any) {
       // Review
       if (method === 'GET' && p === '/api/review/queue') {
         const q = url.searchParams;
-        const deck = isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0);
+        const deck = isNaN(Number(q.get('deck'))) ? (q.get('deck') || undefined) : Number(q.get('deck') || 0);
         return send(res, 200, { cards: study.queue({ deck, limit: Number(q.get('limit') || 0) || 10 }) });
       }
       if (method === 'POST' && p === '/api/review') {
@@ -145,7 +145,7 @@ function route(req: any, res: any) {
       // Quizzes
       if (method === 'GET' && p === '/api/quizzes') {
         const q = url.searchParams;
-        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined;
+        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? (q.get('deck') || undefined) : Number(q.get('deck') || 0)) : undefined;
         return send(res, 200, { quizzes: library.quizList({ deck, limit: Number(q.get('limit') || 0) || 50 }) });
       }
       if (method === 'GET' && /^\/api\/quizzes\/\d+$/.test(p)) {
@@ -223,7 +223,7 @@ function route(req: any, res: any) {
       // Stats
       if (method === 'GET' && p === '/api/stats') {
         const q = url.searchParams;
-        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? q.get('deck') : Number(q.get('deck') || 0)) : undefined;
+        const deck = q.get('deck') ? (isNaN(Number(q.get('deck'))) ? (q.get('deck') || undefined) : Number(q.get('deck') || 0)) : undefined;
         return send(res, 200, study.stats({ deck, days: Number(q.get('days') || 0) || 30 }));
       }
       // latex validate (for UI)

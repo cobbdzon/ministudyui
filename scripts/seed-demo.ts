@@ -1,6 +1,7 @@
 // Demo seed: fills the store with the same sample content the mock UI uses.
 // Safe to re-run: it does nothing once the database already has decks.
 // For a real, empty database use `bun run seed` instead.
+import type { SQLQueryBindings } from 'bun:sqlite';
 import * as path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +15,7 @@ mkdirSync(path.dirname(DB_PATH), { recursive: true });
 store.open(DB_PATH);
 store.migrate();
 
-const existing = store.get('SELECT COUNT(*) AS n FROM decks').n as number;
+const existing = store.get<{ n: number }>('SELECT COUNT(*) AS n FROM decks')?.n ?? 0;
 if (existing > 0) {
   console.log(`seed: ${DB_PATH} already has ${existing} deck(s); nothing to do.`);
   store.close();
@@ -61,7 +62,7 @@ const quizzes = [
 ];
 
 // [id, quiz_id, position, type, prompt, choices|null, answer, explanation, points]
-const questions: Array<[number, number, number, string, string, any, any, string, number]> = [
+const questions: Array<[number, number, number, string, string, unknown, Record<string, unknown>, string, number]> = [
   [1, 1, 1, 'mcq', 'Which choice of $u$ and $dv$ makes $\\int x e^x\\,dx$ easiest?',
     [{ id: 'a', text: 'u = x, dv = e^x dx' }, { id: 'b', text: 'u = e^x, dv = x dx' }, { id: 'c', text: 'u = x e^x, dv = dx' }],
     { correct: 'a' }, 'Differentiating $u=x$ gives $dx$, so the remaining integral is just $\\int e^x dx$.', 1],
@@ -112,7 +113,7 @@ const answers: Array<[number, number, string, string, number | null, number | nu
 const reviewSeries = [6, 9, 0, 12, 7, 0, 0, 5, 8, 11, 4, 0, 13, 6, 0, 7, 10, 9, 0, 3, 8, 0, 14, 11, 5, 0, 6, 9, 7, 12];
 
 store.tx(() => {
-  const run = (sql: string, params: any[] = []) => store.run(sql, params);
+  const run = (sql: string, params: SQLQueryBindings[] = []) => store.run(sql, params);
 
   for (const d of decks) {
     run('INSERT INTO decks (id, name, description, created_at) VALUES (?,?,?,?)', [d.id, d.name, d.description, d.created_at]);
