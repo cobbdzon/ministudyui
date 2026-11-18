@@ -4,7 +4,7 @@ import type { QuestionInput } from './schemas.js';
 
 export type {
   Bundle, BundleDeck, BundleQuiz, CardAddInput, CardDeleteInput, CardInput,
-  CardPatchInput, CardQuery, DeckCreateInput, DeckDeleteInput, DeckUpdateInput,
+  CardPatchInput, CardQuery, CardScheduleInput, DeckCreateInput, DeckDeleteInput, DeckUpdateInput,
   LatexInput, PendingQuery, QuizCreateInput, QuizDeleteInput, QuizGetQuery,
   QuizIdInput, QuizListQuery, ReviewInput, ReviewQueueQuery, StatsQuery,
   GradeInput, AnswerInput, QuestionsBodyInput, QuestionInput, AttemptListQuery,
@@ -27,7 +27,7 @@ export interface CardRow {
 }
 export interface CardStateRow {
   card_id: number; ease: number; interval_days: number; reps: number; lapses: number;
-  due_at: string; last_reviewed_at: string | null;
+  due_at: string; last_reviewed_at: string | null; ignored: number;
 }
 export interface ReviewRow {
   id: number; card_id: number; rating: number; reviewed_at: string;
@@ -75,10 +75,11 @@ export interface SrsResult extends SrsSnapshot {}
 export interface CardDto {
   id: number; deck_id: number; front: string; back: string;
   tags: string[]; source: Source; created_at: string; updated_at: string;
+  due_at: string; ignored: boolean;
 }
 export type DeckCreated = Pick<DeckRow, 'id' | 'name' | 'description'>;
 export interface DeckSummary extends DeckCreated {
-  total: number; due: number; new: number; mature: number; quizzes: number;
+  total: number; due: number; new: number; mature: number; ignored: number; quizzes: number;
 }
 export interface QuizSummary extends QuizRow { question_count: number; total_points: number }
 export interface QuizQuestionDto {
@@ -141,6 +142,9 @@ export interface DeckDeleteBoxInput { deck: DeckRef; confirmName: string; delete
 export interface DeckUpdateBoxInput { deck: DeckRef; name?: string; description?: string }
 export interface CardUpdateBoxInput {
   cardId: number; front?: string; back?: string; tags?: string[]; deck?: DeckRef;
+}
+export interface CardScheduleBoxInput {
+  cardId: number; adjustMinutes?: number; dueNow?: boolean; ignored?: boolean;
 }
 export interface CardDeleteBoxInput { cardIds: number[] }
 export interface CardSearchInput {

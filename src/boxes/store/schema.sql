@@ -24,7 +24,8 @@ CREATE TABLE card_state (
   reps             INTEGER NOT NULL DEFAULT 0,
   lapses           INTEGER NOT NULL DEFAULT 0,
   due_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  last_reviewed_at TEXT
+  last_reviewed_at TEXT,
+  ignored          INTEGER NOT NULL DEFAULT 0 CHECK (ignored IN (0,1))
 );
 CREATE INDEX idx_card_state_due ON card_state(due_at);
 CREATE TABLE reviews (

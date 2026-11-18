@@ -2,8 +2,8 @@ import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
 import { debounce, escapeHtml as esc, renderMath } from '../math.js';
-import type { CardDto, DeckSummary, QuizSummary, Source } from '../../shared/types.js';
-import { confirmDanger, dialog, plural, sourceMark, toast } from '../ui.js';
+import type { CardDto, CardScheduleInput, DeckSummary, QuizSummary, Source } from '../../shared/types.js';
+import { confirmDanger, dialog, dueInLabel, minutesUntil, plural, sourceMark, toast } from '../ui.js';
 
 const TOOLBAR: Array<{ label: string; snippet: string; caret: number | null; title: string }> = [
   { label: '$…$', snippet: '$$', caret: 1, title: 'Inline math' },
@@ -27,6 +27,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   let activeField: 'front' | 'back' = 'front';
   let query = '';
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
   el.innerHTML = `<div aria-busy="true">
     <div class="skeleton" style="width:180px;height:14px;margin-bottom:16px"></div>
@@ -70,6 +71,21 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     return { ai: 'AI', user: 'You', import: 'Imported' }[card.source] || 'You';
   }
 
+  function selectedCard(): CardDto | undefined {
+    return cards.find((c) => String(c.id) === String(selectedId));
+  }
+
+  function scheduleChipClass(c: CardDto): string {
+    if (c.ignored) return 'chip chip--mono chip--plain';
+    const mins = minutesUntil(c.due_at);
+    return mins !== null && mins <= 10 ? 'chip chip--mono chip--warning' : 'chip chip--mono';
+  }
+
+  function dueTitle(dueAt: string): string {
+    const t = new Date(dueAt);
+    return Number.isNaN(t.getTime()) ? 'Unknown due time' : `Due ${t.toLocaleString()}`;
+  }
+
   function filteredCards() {
     if (!query) return cards;
     const q = query.toLowerCase();
@@ -85,7 +101,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const deckDue = deck?.due ?? 0;
     const total = deck?.total ?? cards.length;
     const mature = deck?.mature ?? 0;
-    const learning = Math.max(total - (deck?.new ?? 0) - mature, 0);
+    const learning = Math.max(total - (deck?.new ?? 0) - mature - (deck?.ignored ?? 0), 0);
     el.innerHTML = `
       <a class="back-link" href="#/">${icon('chevron_left')}All decks</a>
       <header class="page-head">
@@ -109,12 +125,13 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
             <span class="chip chip--mono">${deckDue} due</span>
             <span class="chip chip--mono">${mature} mature</span>
             <span class="chip chip--mono">${learning} learning</span>
+            <span class="chip chip--mono" title="Cards excluded from reviews">${deck?.ignored ?? 0} ignored</span>
           </div>
         </div>
         <div class="page-actions">
           <button class="btn btn--outlined" id="rename-deck">${icon('edit')}Rename</button>
           <button class="btn btn--outlined btn--danger" id="delete-deck">${icon('delete')}Delete</button>
-          <a class="btn btn--filled" href="#/review/${esc(String(deckId ?? ''))}">
+          <a class="btn btn--filled" id="review-cta" href="#/review/${esc(String(deckId ?? ''))}">
             ${icon('play_arrow')}${deckDue ? `Review ${deckDue} due` : 'Start review'}
           </a>
         </div>
@@ -173,6 +190,30 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                   <input id="tag-field" maxlength="40" placeholder="Add tag and press Enter" aria-label="Add a tag">
                 </div>
               </div>
+              <div class="sched" id="sched" hidden>
+                <div class="sched__head">
+                  <span class="field__label">Scheduling</span>
+                  <span class="chip chip--mono" id="sched-countdown">—</span>
+                </div>
+                <div class="sched__due" id="sched-due"></div>
+                <div class="sched__row">
+                  <label class="field__label" for="sched-adjust">Shift due time (minutes)</label>
+                  <div class="sched__controls">
+                    <input class="input" id="sched-adjust" type="number" step="1" min="-10000" max="10000" value="15" aria-label="Minutes to shift the due time by">
+                    <button class="btn btn--outlined btn--sm" id="sched-apply">Shift</button>
+                    <button class="btn btn--outlined btn--sm" id="sched-due-now">${icon('schedule')}Make due now</button>
+                  </div>
+                </div>
+                <div class="sched__presets" aria-label="Quick due-time shifts">
+                  <button class="btn btn--text btn--sm" data-shift="-15">&minus;15 min</button>
+                  <button class="btn btn--text btn--sm" data-shift="15">+15 min</button>
+                  <button class="btn btn--text btn--sm" data-shift="60">+1 hour</button>
+                </div>
+                <label class="check-row">
+                  <input type="checkbox" id="sched-ignored">
+                  <span>Ignore in reviews</span>
+                </label>
+              </div>
             </div>
             <div class="editor__preview">
               <span class="field__label">Live preview</span>
@@ -223,6 +264,10 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         }">
           <span class="card-list__front">${esc(c.front)}</span>
           <span class="card-list__meta">${esc(sourceLabel(c))}${c.tags?.length ? ` · ${esc(c.tags[0])}` : ''}</span>
+          <span class="card-list__sched">
+            <span class="${scheduleChipClass(c)}" data-countdown="${esc(c.due_at)}" title="${esc(dueTitle(c.due_at))}">${esc(dueInLabel(c.due_at))}</span>
+            ${c.ignored ? `<span class="chip chip--plain chip--ignored">${icon('cancel')}Ignored</span>` : ''}
+          </span>
         </button>`
       )
       .join('');
@@ -254,6 +299,24 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       });
     });
     el.querySelector('#save-card')?.addEventListener('click', save);
+    el.querySelector('#sched-apply')?.addEventListener('click', () => {
+      const input = el.querySelector<HTMLInputElement>('#sched-adjust');
+      const minutes = Number(input?.value);
+      if (!Number.isFinite(minutes) || !Number.isInteger(minutes)) {
+        toast('Enter a whole number of minutes', { type: 'error' });
+        input?.focus();
+        return;
+      }
+      void applySchedule({ adjust_minutes: minutes });
+    });
+    el.querySelector('#sched-due-now')?.addEventListener('click', () => void applySchedule({ due_now: true }));
+    el.querySelector('#sched-ignored')?.addEventListener('change', (e: Event) => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement) void applySchedule({ ignored: target.checked });
+    });
+    el.querySelectorAll<HTMLButtonElement>('#sched [data-shift]').forEach((btn) => {
+      btn.addEventListener('click', () => void applySchedule({ adjust_minutes: Number(btn.dataset.shift) }));
+    });
     el.querySelector('#discard')?.addEventListener('click', async () => {
       const ok = await confirmDanger({
         title: 'Discard changes?',
@@ -556,6 +619,22 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         : '<span class="source">Created by you</span>';
     }
     if (del) del.hidden = !selectedId;
+
+    const sched = el.querySelector<HTMLElement>('#sched');
+    if (sched) {
+      sched.hidden = !selectedId;
+      const card = selectedCard();
+      const countdown = el.querySelector<HTMLElement>('#sched-countdown');
+      if (countdown) {
+        countdown.textContent = card ? (card.ignored ? 'Ignored' : dueInLabel(card.due_at)) : '—';
+        countdown.className = card ? scheduleChipClass(card) : 'chip chip--mono';
+        countdown.title = card ? dueTitle(card.due_at) : '';
+      }
+      const due = el.querySelector<HTMLElement>('#sched-due');
+      if (due) due.textContent = card ? dueTitle(card.due_at) : '';
+      const ignored = el.querySelector<HTMLInputElement>('#sched-ignored');
+      if (ignored) ignored.checked = !!card?.ignored;
+    }
     schedulePreview();
     updateDirtyUi();
     renderTags();
@@ -677,6 +756,37 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     }
   }
 
+  async function applySchedule(patch: CardScheduleInput) {
+    if (!selectedId) return;
+    try {
+      await ctx.api.adjustCardSchedule(Number(selectedId), patch);
+      const data = await ctx.api.cards({ deck: deckId, limit: 100 });
+      cards = data.cards || [];
+      await refreshSummary();
+      renderList();
+      loadIntoEditor();
+      const label = patch.ignored !== undefined
+        ? (patch.ignored ? 'Card ignored in reviews' : 'Card back in reviews')
+        : patch.due_now ? 'Card is due now' : 'Due time shifted';
+      toast(label);
+    } catch (err) {
+      toast(errorMessage(err, 'Could not update scheduling'), { type: 'error' });
+      loadIntoEditor();
+    }
+  }
+
+  function tickCountdowns() {
+    el.querySelectorAll<HTMLElement>('[data-countdown]').forEach((node) => {
+      node.textContent = dueInLabel(node.dataset.countdown);
+    });
+    const card = selectedCard();
+    const sched = el.querySelector<HTMLElement>('#sched-countdown');
+    if (card && sched) {
+      sched.textContent = card.ignored ? 'Ignored' : dueInLabel(card.due_at);
+      sched.className = scheduleChipClass(card);
+    }
+  }
+
   async function refreshSummary() {
     try {
       const data = await ctx.api.decks();
@@ -685,11 +795,17 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       const title = el.querySelector('.page-title');
       if (title) title.textContent = deck?.name || 'Deck';
       const chips = el.querySelectorAll('.quiz-meta .chip');
-      if (chips.length >= 4) {
+      if (chips.length >= 5) {
         chips[0].textContent = plural(deck?.total ?? cards.length, 'card');
         chips[1].textContent = `${deck?.due ?? 0} due`;
         chips[2].textContent = `${deck?.mature ?? 0} mature`;
-        chips[3].textContent = `${Math.max((deck?.total || 0) - (deck?.new || 0) - (deck?.mature || 0), 0)} learning`;
+        chips[3].textContent = `${Math.max((deck?.total || 0) - (deck?.new || 0) - (deck?.mature || 0) - (deck?.ignored || 0), 0)} learning`;
+        chips[4].textContent = `${deck?.ignored ?? 0} ignored`;
+      }
+      const cta = el.querySelector<HTMLElement>('#review-cta');
+      if (cta) {
+        const due = deck?.due ?? 0;
+        cta.innerHTML = `${icon('play_arrow')}${due ? `Review ${due} due` : 'Start review'}`;
       }
     } catch {
       /* summary is cosmetic */
@@ -734,6 +850,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       saved = { ...draft, tags: [...draft.tags], source: first.source || 'user' };
     }
     renderShell();
+    countdownTimer = setInterval(tickCountdowns, 30_000);
   } catch (err) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
@@ -756,6 +873,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   return () => {
     disposed = true;
     if (refreshTimer !== null) clearTimeout(refreshTimer);
+    if (countdownTimer !== null) clearInterval(countdownTimer);
     off();
   };
 }

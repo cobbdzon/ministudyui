@@ -66,6 +66,12 @@ const DeckDeleteInput = z.object({ deck: DeckRef, confirm_name: z.string() });
 const DeckUpdateInput = z.object({ deck: DeckRef, name: z.string().min(1).max(120).optional(), description: z.string().max(2000).optional() });
 const CardAddInput = z.object({ deck: DeckRef, cards: z.array(z.object({ front: Latex, back: Latex, tags: Tags })).min(1).max(100) });
 const CardUpdateInput = z.object({ card_id: Id, front: Latex.optional(), back: Latex.optional(), tags: Tags, deck: DeckRef.optional() });
+const CardScheduleInput = z.object({
+  card_id: Id,
+  adjust_minutes: z.number().int().min(-10000).max(10000).optional(),
+  due_now: z.boolean().optional(),
+  ignored: z.boolean().optional(),
+});
 const CardDeleteInput = z.object({ card_ids: z.array(Id).min(1).max(100) });
 const CardSearchInput = z.object({ query: z.string().max(200).optional(), deck: DeckRef.optional(), tag: z.string().optional(), source: z.enum(['user', 'ai', 'import']).optional(), limit: z.number().int().min(1).max(100).default(20), offset: z.number().int().min(0).default(0) });
 const QuizCreateInput = z.object({ title: z.string().min(1).max(200), description: z.string().max(2000).optional(), deck: DeckRef.optional(), questions: z.array(Question).min(1).max(100) });
@@ -89,6 +95,7 @@ type DeckDeleteArgs = z.infer<typeof DeckDeleteInput>;
 type DeckUpdateArgs = z.infer<typeof DeckUpdateInput>;
 type CardAddArgs = z.infer<typeof CardAddInput>;
 type CardUpdateArgs = z.infer<typeof CardUpdateInput>;
+type CardScheduleArgs = z.infer<typeof CardScheduleInput>;
 type CardDeleteArgs = z.infer<typeof CardDeleteInput>;
 type CardSearchArgs = z.infer<typeof CardSearchInput>;
 type QuizCreateArgs = z.infer<typeof QuizCreateInput>;
@@ -114,6 +121,9 @@ server.registerTool('deck_update', { description: 'Rename a deck and/or edit its
 
 server.registerTool('card_add', { description: 'Add cards', inputSchema: CardAddInput }, wrap((a: CardAddArgs) => library.cardAdd(a)));
 server.registerTool('card_update', { description: 'Update a card', inputSchema: CardUpdateInput }, wrap((a: CardUpdateArgs) => library.cardUpdate({ cardId: a.card_id, front: a.front, back: a.back, tags: a.tags, deck: a.deck })));
+server.registerTool('card_schedule', { description: 'Override a card due time (shift by minutes and/or make due now) and toggle whether it is ignored in reviews', inputSchema: CardScheduleInput }, wrap((a: CardScheduleArgs) => study.cardSchedule({
+  cardId: a.card_id, adjustMinutes: a.adjust_minutes, dueNow: a.due_now, ignored: a.ignored,
+})));
 server.registerTool('card_delete', { description: 'Delete cards', inputSchema: CardDeleteInput }, wrap((a: CardDeleteArgs) => library.cardDelete({ cardIds: a.card_ids })));
 server.registerTool('card_search', { description: 'Search cards', inputSchema: CardSearchInput }, wrap((a: CardSearchArgs) => library.cardSearch(a)));
 

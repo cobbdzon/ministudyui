@@ -11,6 +11,7 @@ interface DeckFixture { id: number; name: string; description: string; created_a
 interface CardFixture {
   id: number; deck_id: number; front: string; back: string;
   tags: string[]; source: Source; reps: number; due: boolean;
+  ignored?: boolean; due_at_ms?: number;
 }
 interface QuizFixture {
   id: number; deck_id: number | null; title: string;
@@ -477,9 +478,10 @@ function summaries(): DeckSummary[] {
     return {
       ...d,
       total: own.length,
-      due: own.filter((c) => c.due).length,
+      due: own.filter((c) => c.due && !c.ignored).length,
       new: own.filter((c) => c.reps === 0).length,
       mature: own.filter((c) => c.reps >= 3).length,
+      ignored: own.filter((c) => c.ignored).length,
       quizzes: quizzes.filter((q) => q.deck_id === d.id).length,
     };
   });
@@ -519,6 +521,10 @@ function withPreview(card: CardFixture): ReviewCardDto {
   };
 }
 
+function dueAtMs(card: CardFixture): number {
+  return card.due_at_ms ?? NOW + (card.due ? 12 : 1440 + (card.id % 7) * 1440) * 60000;
+}
+
 function publicCard(card: CardFixture): CardDto {
   return {
     id: card.id,
@@ -529,6 +535,8 @@ function publicCard(card: CardFixture): CardDto {
     source: card.source,
     created_at: iso(10),
     updated_at: iso(2),
+    due_at: new Date(dueAtMs(card)).toISOString(),
+    ignored: !!card.ignored,
   };
 }
 
@@ -730,6 +738,19 @@ const api: Api = {
     return Promise.resolve({ ok: true, card: publicCard(card) });
   },
 
+  adjustCardSchedule(id, patch) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) fail('card not found');
+    if (patch.ignored !== undefined) card.ignored = patch.ignored;
+    if (patch.due_now || patch.adjust_minutes !== undefined) {
+      const base = patch.due_now ? Date.now() : dueAtMs(card);
+      const dueAt = base + (patch.adjust_minutes ?? 0) * 60000;
+      card.due_at_ms = dueAt;
+      card.due = dueAt <= Date.now();
+    }
+    return Promise.resolve({ ok: true });
+  },
+
   deleteCards(ids) {
     for (const id of ids) {
       const idx = cards.findIndex((c) => c.id === id);
@@ -740,7 +761,7 @@ const api: Api = {
 
   reviewQueue(deck, limit = 10) {
     const d = resolveDeck(Number.isNaN(Number(deck)) ? deck : Number(deck));
-    const rows = cards.filter((c) => c.deck_id === d.id && c.due).slice(0, limit);
+    const rows = cards.filter((c) => c.deck_id === d.id && c.due && !c.ignored).slice(0, limit);
     return Promise.resolve({ cards: clone(rows.map(withPreview)) });
   },
 
@@ -951,7 +972,7 @@ const api: Api = {
     const total = cards.length;
     return Promise.resolve({
       total,
-      due: cards.filter((c) => c.due).length,
+      due: cards.filter((c) => c.due && !c.ignored).length,
       reviews_per_day: clone(reviewsPerDay),
       retention: 87.2,
       interval_distribution: [

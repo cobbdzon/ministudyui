@@ -4,7 +4,7 @@ import { hc } from 'hono/client';
 import type { AppType } from '../src/http/app.js';
 import type {
   AnswerRow, ApiErrorBody, AttemptRow, AttemptStart, AttemptStatus, AttemptSummary,
-  Bundle, CardDto, CardInput, CardPatchInput, CardRow, ChangeEvent, DeckCreateInput, DeckRef,
+  Bundle, CardDto, CardInput, CardPatchInput, CardRow, CardScheduleInput, ChangeEvent, DeckCreateInput, DeckRef,
   DeckSummary, DeckUpdateInput, ImportResult, OkResponse, PendingAnswerDto, QuizQuestionDto,
   QuizRow, QuizSummary, Rating, ReviewCardDto, Source, StatsDto,
 } from '../shared/types.js';
@@ -46,7 +46,7 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong'): s
   return fallback;
 }
 
-function normalizeCard(c: CardRow & { tags?: unknown }): CardDto {
+function normalizeCard(c: CardRow & { tags?: unknown; due_at?: string; ignored?: number | boolean }): CardDto {
   let tags: unknown = c.tags;
   if (!Array.isArray(tags)) {
     try { tags = JSON.parse(c.tags_json || '[]'); } catch { tags = []; }
@@ -54,6 +54,8 @@ function normalizeCard(c: CardRow & { tags?: unknown }): CardDto {
   return {
     id: c.id, deck_id: c.deck_id, front: c.front, back: c.back,
     tags: tags as string[], source: c.source, created_at: c.created_at, updated_at: c.updated_at,
+    due_at: c.due_at || c.updated_at,
+    ignored: c.ignored === 1 || c.ignored === true,
   };
 }
 
@@ -68,6 +70,7 @@ export interface Api {
   addCards(deck: DeckRef, cards: CardInput[]): Promise<{ card_ids: number[] }>;
   importBundle(bundle: Bundle): Promise<ImportResult>;
   updateCard(id: number, patch: CardPatchInput): Promise<OkResponse>;
+  adjustCardSchedule(id: number, patch: CardScheduleInput): Promise<OkResponse>;
   deleteCards(ids: number[]): Promise<OkResponse>;
   reviewQueue(deck: DeckRef, limit?: number): Promise<{ cards: ReviewCardDto[] }>;
   review(cardId: number, rating: Rating): Promise<{ ok: true; review_id: number }>;
@@ -114,6 +117,9 @@ const real: Api = {
   addCards: (deck, cards) => unwrap(rpc.api.cards.$post({ json: { deck, cards } })),
   importBundle: (bundle) => unwrap(rpc.api.import.$post({ json: bundle })),
   updateCard: (id, patch) => unwrap(rpc.api.cards[':id'].$patch({
+    param: { id: String(id) }, json: patch,
+  })),
+  adjustCardSchedule: (id, patch) => unwrap(rpc.api.cards[':id'].schedule.$patch({
     param: { id: String(id) }, json: patch,
   })),
   deleteCards: (ids) => unwrap(rpc.api.cards.$delete({ json: { card_ids: ids } })),

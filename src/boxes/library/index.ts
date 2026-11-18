@@ -1,7 +1,7 @@
 import * as store from '../store/index.js';
 import { AppError, asAppError } from '../errors.js';
 import type {
-  Bundle, CardAddInput, CardDeleteBoxInput, CardDeleteInput, CardRow, CardUpdateBoxInput,
+  Bundle, CardAddInput, CardDeleteBoxInput, CardDeleteInput, CardRow, CardStateRow, CardUpdateBoxInput,
   Choice, DeckCreated, DeckRef, DeckRow, DeckDeleteBoxInput, DeckUpdateBoxInput,
   MergedQuestion, OkResponse, QuestionAnswer, QuestionDeleteInput, QuestionInput,
   QuestionQuestionPatch, QuestionType, QuestionUpdateInput, QuizAddQuestionsInput,
@@ -126,21 +126,22 @@ export function cardDelete({ cardIds }: CardDeleteBoxInput): OkResponse {
   return { ok: true };
 }
 
-interface CardSearchResult { cards: CardRow[]; total: number }
+type CardWithState = CardRow & Pick<CardStateRow, 'due_at' | 'ignored'>;
+interface CardSearchResult { cards: CardWithState[]; total: number }
 export function cardSearch({ query, deck, tag, source, limit, offset }: {
   query?: string; deck?: DeckRef; tag?: string; source?: string; limit?: number; offset?: number;
 }): CardSearchResult {
   const lim = Math.min(Math.max(limit || 20, 1), 100);
   const off = offset || 0;
-  let sql = 'SELECT * FROM cards WHERE 1=1';
+  let sql = 'SELECT c.*, cs.due_at, cs.ignored FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE 1=1';
   const params: (string | number)[] = [];
-  if (deck !== undefined) { const d = resolveDeck(deck); sql += ' AND deck_id=?'; params.push(d.id); }
-  if (query) { sql += ' AND (front LIKE ? OR back LIKE ?)'; params.push('%' + query + '%', '%' + query + '%'); }
-  if (source) { sql += ' AND source=?'; params.push(source); }
-  if (tag) { sql += ' AND EXISTS (SELECT 1 FROM json_each(tags_json) WHERE value=?)'; params.push(tag); }
-  sql += ' ORDER BY id LIMIT ? OFFSET ?';
+  if (deck !== undefined) { const d = resolveDeck(deck); sql += ' AND c.deck_id=?'; params.push(d.id); }
+  if (query) { sql += ' AND (c.front LIKE ? OR c.back LIKE ?)'; params.push('%' + query + '%', '%' + query + '%'); }
+  if (source) { sql += ' AND c.source=?'; params.push(source); }
+  if (tag) { sql += ' AND EXISTS (SELECT 1 FROM json_each(c.tags_json) WHERE value=?)'; params.push(tag); }
+  sql += ' ORDER BY c.id LIMIT ? OFFSET ?';
   params.push(lim, off);
-  const rows = store.all<CardRow>(sql, params);
+  const rows = store.all<CardWithState>(sql, params);
   return { cards: rows, total: rows.length };
 }
 

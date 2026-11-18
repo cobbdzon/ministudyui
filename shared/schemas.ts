@@ -75,6 +75,11 @@ export const CardPatchSchema = z.looseObject({
   tags: z.array(z.string().min(1).max(40)).max(10).optional(),
   deck: DeckRefSchema.optional(),
 });
+export const CardScheduleSchema = z.looseObject({
+  adjust_minutes: z.number().int().min(-10000).max(10000).optional(),
+  due_now: z.boolean().optional(),
+  ignored: z.boolean().optional(),
+});
 export const CardDeleteSchema = z.looseObject({
   card_ids: z.array(z.number().int()).min(1).max(100),
 });
@@ -144,6 +149,7 @@ export type DeckDeleteInput = z.infer<typeof DeckDeleteSchema>;
 export type CardInput = z.infer<typeof CardInputSchema>;
 export type CardAddInput = z.infer<typeof CardAddSchema>;
 export type CardPatchInput = z.infer<typeof CardPatchSchema>;
+export type CardScheduleInput = z.infer<typeof CardScheduleSchema>;
 export type CardDeleteInput = z.infer<typeof CardDeleteSchema>;
 export type ReviewInput = z.infer<typeof ReviewSchema>;
 export type QuestionInput = z.infer<typeof QuestionSchema>;

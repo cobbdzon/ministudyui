@@ -34,6 +34,15 @@ export function migrate(): void {
     db!.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_quizzes_deck ON quizzes(deck_id) WHERE deck_id IS NOT NULL');
     db!.exec('PRAGMA user_version = 2');
   }
+  if (v < 3) {
+    // Fresh databases already have the column from schema.sql; upgrade in place
+    // only when it is missing so this migration is safe to run repeatedly.
+    const cols = db!.prepare('PRAGMA table_info(card_state)').all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === 'ignored')) {
+      db!.exec('ALTER TABLE card_state ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0 CHECK (ignored IN (0,1))');
+    }
+    db!.exec('PRAGMA user_version = 3');
+  }
 }
 
 export function tx<T>(fn: () => T): T {

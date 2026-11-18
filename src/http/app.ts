@@ -103,6 +103,15 @@ const routes = app
     c.json(library.cardAdd(c.req.valid('json'))))
   .patch('/api/cards/:id', v('json', S.CardPatchSchema), (c) =>
     c.json(library.cardUpdate({ cardId: parseId(c.req.param('id')), ...c.req.valid('json') })))
+  .patch('/api/cards/:id/schedule', v('json', S.CardScheduleSchema), (c) => {
+    const b = c.req.valid('json');
+    return c.json(study.cardSchedule({
+      cardId: parseId(c.req.param('id')),
+      adjustMinutes: b.adjust_minutes,
+      dueNow: b.due_now,
+      ignored: b.ignored,
+    }));
+  })
   .delete('/api/cards', v('json', S.CardDeleteSchema), (c) =>
     c.json(library.cardDelete({ cardIds: c.req.valid('json').card_ids })))
   // 10–12 — review

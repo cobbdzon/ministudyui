@@ -821,6 +821,84 @@
   color: color-mix(in srgb, var(--md-sys-color-on-primary-container) 76%, transparent);
 }
 
+.card-list__sched {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.card-list__sched .chip {
+  min-height: 22px;
+  padding: 1px 8px;
+  font-size: 10px;
+}
+
+.card-list__sched .chip--warning {
+  background: var(--md-sys-color-warning-container);
+  color: var(--md-sys-color-on-warning-container);
+}
+
+.chip--ignored .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Per-card scheduling overrides in the deck editor */
+.sched {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.sched[hidden] {
+  display: none;
+}
+
+.sched__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sched__due {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small);
+}
+
+.sched__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sched__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sched__controls .input {
+  width: 88px;
+}
+
+.sched__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: -6px;
+}
+
+.sched .check-row {
+  margin-top: 0;
+}
+
 .card-list__empty {
   padding: var(--space-5) var(--space-3);
   text-align: center;

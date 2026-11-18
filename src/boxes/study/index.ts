@@ -2,8 +2,8 @@ import * as store from '../store/index.js';
 import * as srs from '../srs/index.js';
 import { AppError } from '../errors.js';
 import type {
-  CardRow, CardStateRow, DeckRow, DeckSummary, ReviewCardDto,
-  ReviewQueueInput, ReviewBoxInput, SrsSnapshot, StatsDto, StatsInput,
+  CardRow, CardScheduleBoxInput, CardStateRow, DeckRow, DeckSummary, OkResponse,
+  ReviewCardDto, ReviewQueueInput, ReviewBoxInput, SrsSnapshot, StatsDto, StatsInput,
 } from '../../../shared/types.js';
 
 export function queue({ deck, limit }: ReviewQueueInput): ReviewCardDto[] {
@@ -23,7 +23,7 @@ export function queue({ deck, limit }: ReviewQueueInput): ReviewCardDto[] {
   const rows = store.all<QueueRow>(
     `SELECT c.id, c.front, c.back, c.tags_json, c.source, cs.ease, cs.interval_days, cs.reps, cs.lapses, cs.due_at
      FROM cards c JOIN card_state cs ON cs.card_id=c.id
-     WHERE c.deck_id=? AND cs.due_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE c.deck_id=? AND cs.ignored = 0 AND cs.due_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
      ORDER BY cs.due_at LIMIT ?`, [deckId, lim]);
   const now = new Date().toISOString();
   return rows.map((r) => ({
@@ -32,6 +32,37 @@ export function queue({ deck, limit }: ReviewQueueInput): ReviewCardDto[] {
       ease: r.ease, interval_days: r.interval_days, reps: r.reps, lapses: r.lapses,
     }, now),
   }));
+}
+
+// Manual override of a card's scheduling. Shifts are relative to the current
+// due time (or to now when due_now is set), so `due_now` and `adjust_minutes`
+// can be combined. `ignored` cards are excluded from review queues.
+export function cardSchedule({ cardId, adjustMinutes, dueNow, ignored }: CardScheduleBoxInput): OkResponse {
+  if (adjustMinutes === undefined && dueNow === undefined && ignored === undefined)
+    throw new AppError('VALIDATION', 'provide at least one scheduling change');
+  if (adjustMinutes !== undefined && !Number.isFinite(adjustMinutes))
+    throw new AppError('VALIDATION', 'adjust_minutes must be a finite integer', 'adjust_minutes');
+  if (adjustMinutes !== undefined && (adjustMinutes < -10000 || adjustMinutes > 10000))
+    throw new AppError('VALIDATION', 'adjust_minutes must be between -10000 and 10000', 'adjust_minutes');
+
+  const state = store.get<CardStateRow>('SELECT * FROM card_state WHERE card_id=?', [cardId]);
+  if (!state) throw new AppError('NOT_FOUND', 'card not found');
+
+  let base = Date.now();
+  if (!dueNow && state.due_at) {
+    const t = new Date(state.due_at).getTime();
+    if (!Number.isNaN(t)) base = t;
+  }
+  const dueAt = new Date(base + (adjustMinutes ?? 0) * 60000).toISOString();
+  const nextIgnored = ignored === undefined ? state.ignored : ignored ? 1 : 0;
+
+  return store.tx(() => {
+    store.run('UPDATE card_state SET due_at=?, ignored=? WHERE card_id=?', [dueAt, nextIgnored, cardId]);
+    // card_state has no change trigger; touching the card fires trg_cards_u so
+    // the SSE feed tells open deck views to refresh their pills and countdowns.
+    store.run("UPDATE cards SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", [cardId]);
+    return { ok: true as const };
+  });
 }
 
 export function review({ cardId, rating }: ReviewBoxInput): { ok: true; review_id: number } {
@@ -80,7 +111,11 @@ export function stats({ deck, days }: StatsInput): StatsDto {
   }
   const where = deckId ? 'WHERE c.deck_id=' + deckId : '';
   const total = store.count(`SELECT COUNT(*) AS n FROM cards c ${where}`);
-  const due = store.count(`SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id ${where} ${deckId ? 'AND' : 'WHERE'} cs.due_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')`.replace('WHERE  AND', 'WHERE'));
+  const dueWhere = deckId ? 'WHERE c.deck_id=? AND cs.ignored = 0' : 'WHERE cs.ignored = 0';
+  const dueParams = deckId ? [deckId] : [];
+  const due = store.count(
+    `SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id ${dueWhere}
+     AND cs.due_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')`, dueParams);
   const rpd = store.all<{ day: string; n: number }>(
     `SELECT substr(reviewed_at,1,10) AS day, COUNT(*) AS n FROM reviews r JOIN cards c ON c.id=r.card_id ${deckId ? 'WHERE c.deck_id=' + deckId : ''} GROUP BY day ORDER BY day DESC LIMIT ?`, [d]);
 
@@ -132,10 +167,11 @@ export function deckSummaries(): DeckSummary[] {
   const decks = store.all<DeckRow>('SELECT * FROM decks ORDER BY name');
   return decks.map((d) => ({
     id: d.id, name: d.name, description: d.description,
-    due: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.due_at <= strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\')', [d.id]),
+    due: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.ignored = 0 AND cs.due_at <= strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\')', [d.id]),
     new: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps = 0', [d.id]),
     total: store.count('SELECT COUNT(*) AS n FROM cards WHERE deck_id=?', [d.id]),
     mature: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps >= 3', [d.id]),
+    ignored: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.ignored = 1', [d.id]),
     quizzes: store.count('SELECT COUNT(*) AS n FROM quizzes WHERE deck_id=?', [d.id]),
   }));
 }

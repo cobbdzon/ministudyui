@@ -38,6 +38,26 @@ export function relTime(iso: string | null | undefined): string {
   return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+export function minutesUntil(dueAt: string | null | undefined): number | null {
+  if (!dueAt) return null;
+  const t = new Date(dueAt).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.ceil((t - Date.now()) / 60000));
+}
+
+export function dueInLabel(dueAt: string | null | undefined): string {
+  const mins = minutesUntil(dueAt);
+  if (mins === null) return '—';
+  if (mins <= 0) return 'Due now';
+  if (mins < 60) return `in ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  if (hours < 24) return rest ? `in ${hours} h ${rest} min` : `in ${hours} h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours ? `in ${days} d ${remHours} h` : `in ${days} d`;
+}
+
 export function longDate(date = new Date()): string {
   return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 }
