@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc, renderMath } from '../math.js';
+import { escapeHtml as esc, markdownInline as mdi, renderMath } from '../math.js';
 import { plural, toast } from '../ui.js';
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
@@ -45,7 +45,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                   <span class="quiz-mark">${icon('quiz')}</span>
                   <span class="list__main">
                     <span class="list__title">${esc(q.title)}</span>
-                    <span class="list__desc">${esc(q.description || 'No description')}</span>
+                    <span class="list__desc">${mdi(q.description || 'No description')}</span>
                     ${
                       deck
                         ? `<span class="quiz-deck" data-deck="${esc(

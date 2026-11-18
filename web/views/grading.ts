@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc, renderMath } from '../math.js';
+import { escapeHtml as esc, markdown as md, renderMath } from '../math.js';
 import { plural, toast, typeLabel } from '../ui.js';
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
@@ -39,16 +39,16 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                       Number(a.max_points) === 1 ? 'point' : 'points'
                     }</span>
                   </div>
-                  <div class="grade-item__prompt" data-math>${esc(a.prompt)}</div>
+                  <div class="grade-item__prompt" data-math>${md(a.prompt)}</div>
                   <div class="grade-block">
                     <div class="grade-block__label">Student response</div>
-                    <div class="grade-block__body" data-math>${esc(a.response || 'No response')}</div>
+                    <div class="grade-block__body" data-math>${md(a.response || 'No response')}</div>
                   </div>
                   ${
                     a.reference
                       ? `<div class="grade-block">
                           <div class="grade-block__label">Model answer</div>
-                          <div class="grade-block__body" data-math>${esc(a.reference)}</div>
+                          <div class="grade-block__body" data-math>${md(a.reference)}</div>
                         </div>`
                       : ''
                   }
@@ -56,7 +56,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                     a.rubric
                       ? `<div class="grade-block">
                           <div class="grade-block__label">Rubric</div>
-                          <div class="grade-block__body">${esc(a.rubric)}</div>
+                          <div class="grade-block__body" data-math>${md(a.rubric)}</div>
                         </div>`
                       : ''
                   }

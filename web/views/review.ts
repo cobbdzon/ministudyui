@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc, renderMath } from '../math.js';
+import { escapeHtml as esc, markdown as md, renderMath } from '../math.js';
 import { plural, sourceMark, toast } from '../ui.js';
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
@@ -74,7 +74,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       <div class="study-card" id="study-card" data-flipped="false">
         <div class="study-card__face study-card__front">
           <div class="study-card__content">
-            <div class="study-card__prompt">${esc(card.front)}</div>
+            <div class="study-card__prompt">${md(card.front)}</div>
           </div>
           <div class="study-card__footer">
             <div class="chip-row">${tags || '<span class="source">No tags</span>'}</div>
@@ -83,9 +83,9 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         </div>
         <div class="study-card__face study-card__face--back study-card__back">
           <div class="study-card__content">
-            <div class="study-card__prompt study-card__prompt--small">${esc(card.front)}</div>
+            <div class="study-card__prompt study-card__prompt--small">${md(card.front)}</div>
             <div class="study-card__divider"></div>
-            <div class="study-card__answer">${esc(card.back)}</div>
+            <div class="study-card__answer">${md(card.back)}</div>
           </div>
           <div class="study-card__footer">
             <div class="chip-row">${tags}</div>

@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc, renderMath } from '../math.js';
+import { escapeHtml as esc, markdown as md, renderMath } from '../math.js';
 import { plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
@@ -139,7 +139,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
             return `<article class="result-item">
               <div class="result-item__head">
                 <span class="result-item__num">${String(i + 1).padStart(2, '0')}</span>
-                <div class="result-item__prompt" data-math>${esc(q.prompt)}</div>
+                <div class="result-item__prompt" data-math>${md(q.prompt)}</div>
                 <div class="result-item__marks">
                   ${outcome(a, q)}
                   <span class="chip chip--mono">${pointsLabel(a, q)}</span>
@@ -148,18 +148,18 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
               <dl class="result-answer">
                 <dt>Your answer</dt>
                 <dd${response && !['mcq', 'multi'].includes(q.type) ? ' class="content-serif" data-math' : ''}>${
-                  response ? esc(response) : '<span class="muted">No answer</span>'
+                  response ? md(response) : '<span class="muted">No answer</span>'
                 }</dd>
                 <dt>Correct answer</dt>
-                <dd class="content-serif" data-math>${esc(correct || '—')}</dd>
+                <dd class="content-serif" data-math>${md(correct || '—')}</dd>
                 ${
                   a?.feedback
-                    ? `<dt>Feedback</dt><dd>${esc(a.feedback)}</dd>`
+                    ? `<dt>Feedback</dt><dd data-math>${md(a.feedback)}</dd>`
                     : ''
                 }
                 ${
                   q.explanation
-                    ? `<dt>Why</dt><dd class="result-explanation">${esc(q.explanation)}</dd>`
+                    ? `<dt>Why</dt><dd class="result-explanation" data-math>${md(q.explanation)}</dd>`
                     : ''
                 }
                 <dt>Type</dt>

@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { escapeHtml as esc } from '../math.js';
+import { escapeHtml as esc, markdownInline as mdi, renderMath } from '../math.js';
 import {
   deckMeter,
   dialog,
@@ -51,7 +51,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
           <span class="list__title-text">${esc(d.name)}</span>
           <button class="icon-btn icon-btn--sm deck-list__edit" data-rename="${d.id}" title="Rename deck" aria-label="Rename ${esc(d.name)}">${icon('edit')}</button>
         </span>
-        <span class="list__desc">${esc(d.description || 'No description')}</span>
+        <span class="list__desc">${mdi(d.description || 'No description')}</span>
         ${
           linked[0]
             ? `<span class="deck-row__quizzes" data-deck="${esc(
@@ -214,6 +214,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         </aside>
       </div>`;
 
+    el.querySelectorAll('.list__desc').forEach((node) => renderMath(node));
     bind(decks, quizzes);
   }
 

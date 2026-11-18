@@ -41,25 +41,37 @@ Question: an object with "type" and "prompt" (required, 1-4000 characters), plus
 All types also accept optional "explanation" (<= 4000 characters) and "points" (number > 0 and <= 100, default 1).
 Choice ids must be 1-16 lowercase letters, digits or underscores (e.g. "a", "b", "c") and "correct" must reference one of them.
 
-MATH AND JSON
-Math may be written in LaTeX between dollar signs. In JSON every backslash must be escaped as two characters, so the LaTeX \\frac is written \"\\\\frac\" inside a JSON string. Do not use unescaped backslashes or raw line breaks inside strings.
+MARKDOWN FORMATTING
+Every text field is rendered as Markdown: deck and quiz descriptions, card fronts and backs, question prompts, choice texts, explanations, references, and rubrics. Use it to make content clear and scannable:
+- "#" through "######" for headings (use sparingly in short fields)
+- "- " or "1. " for bulleted or numbered lists
+- "**bold**", "*italic*", "~~strikethrough~~"
+- backticks for inline code and triple-tilde (~~~) fences with a language for code blocks
+- "> " for blockquotes, "---" for a divider, "[label](url)" for links, and "| a | b |" tables with a separator row
+- Use blank lines between paragraphs and blocks.
+Do not use HTML tags: they are shown as literal text, never rendered. Keep choice texts short and mostly inline (bold, code, math); avoid headings and multi-paragraph lists there because choices are displayed as compact labels.
+LaTeX math works inside Markdown: $x^2$ for inline math and $$...$$ for a displayed equation. Keep math in normal text, not inside code spans or fenced code blocks, or it will not render as math.
+
+JSON ESCAPING
+Write real newlines in strings as "\\n" and escape double quotes as "\\\"". In LaTeX, every backslash must be doubled: the command \\frac is written "\\\\frac" in the JSON source. Prefer triple-tilde code fences so you do not have to escape backticks.
 
 EXAMPLE
 \`\`\`json
 {
   "decks": [{
     "name": "Calculus I",
-    "description": "Limits and derivatives.",
+    "description": "**Limits** and derivatives.\\n\\n- Definition of a limit\\n- Derivative rules",
     "cards": [
-      { "front": "What is the derivative of $x^2$?", "back": "$2x$", "tags": ["derivatives"] }
+      { "front": "What is the derivative of $x^2$?\\n\\n*Hint: use the power rule.*", "back": "$$\\\\frac{d}{dx}x^2 = 2x$$\\n\\nBy the **power rule**.", "tags": ["derivatives"] }
     ]
   }],
   "quizzes": [{
     "title": "Derivatives quick check",
+    "description": "One question at a time. **Markdown** and math are both supported.",
     "deck": "Calculus I",
     "questions": [
-      { "type": "mcq", "prompt": "Derivative of $x^2$?", "choices": [{"id":"a","text":"$x$"},{"id":"b","text":"$2x$"},{"id":"c","text":"$x^3$"}], "correct": "b", "points": 1 },
-      { "type": "numeric", "prompt": "Evaluate $f'(3)$ for $f(x)=x^2$.", "value": 6, "tolerance": 0.001 }
+      { "type": "mcq", "prompt": "Which expression gives the derivative of $x^2$?", "choices": [{"id":"a","text":"$x$"},{"id":"b","text":"$2x$"},{"id":"c","text":"$x^3$"}], "correct": "b", "points": 1 },
+      { "type": "numeric", "prompt": "Evaluate $f'(3)$ for $f(x)=x^2$.\\n\\nRound to 3 decimals.", "value": 6, "tolerance": 0.001 }
     ]
   }]
 }

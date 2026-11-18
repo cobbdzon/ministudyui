@@ -76,6 +76,15 @@ The home-page greeting picks a random line from the lists under `greeting`,
 depending on the time of day. Add, remove, or rewrite lines to change the
 wording. Restart the server (or refresh the page) to pick up changes.
 
+### Content formatting
+
+Deck descriptions, card fronts/backs, quiz descriptions, question prompts,
+choices, explanations, and graded answers all render Markdown — headings,
+lists, emphasis, code, blockquotes, links, and tables. LaTeX still works
+alongside it with `$...$` and `$$...$$`; math is protected from the Markdown
+parser, and KaTeX renders the result. Raw HTML is escaped and link targets are
+restricted to http(s) and mailto.
+
 ### Environment
 
 | Variable | Default | Notes |

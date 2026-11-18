@@ -1,7 +1,13 @@
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
-import { debounce, escapeHtml as esc, renderMath } from '../math.js';
+import {
+  debounce,
+  escapeHtml as esc,
+  markdown as md,
+  markdownInline as mdi,
+  renderMath,
+} from '../math.js';
 import type { AttemptRow, AttemptStart, DeckSummary, QuizQuestionDto, QuizRow } from '../../shared/types.js';
 import { confirmDanger, dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
 
@@ -29,7 +35,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const pv = el.querySelector<HTMLElement>('#answer-preview');
     const ta = el.querySelector<HTMLTextAreaElement>('#text-answer');
     if (!pv || !ta) return;
-    pv.textContent = ta.value;
+    pv.innerHTML = md(ta.value);
     renderMath(pv);
   }, 140);
 
@@ -83,7 +89,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       <header class="quiz-head">
         <div class="quiz-head__main">
           <h1 class="quiz-title">${esc(quiz?.title || 'Quiz')}</h1>
-          <p class="page-sub" id="quiz-description">${esc(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</p>
+          <div class="page-sub" id="quiz-description">${md(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</div>
           ${linked}
           <div class="quiz-meta" style="margin-top:12px">${meta}</div>
         </div>
@@ -109,7 +115,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
               (q, i) => `<div class="question-preview">
                 <span class="question-preview__num">${String(i + 1).padStart(2, '0')}</span>
                 <div class="question-preview__main">
-                  <div class="question-preview__prompt">${esc(q.prompt)}</div>
+                  <div class="question-preview__prompt">${md(q.prompt)}</div>
                   <div class="question-preview__meta">
                     <span class="chip chip--plain">${esc(typeLabel(q.type))}</span>
                     <span class="chip chip--mono">${q.points} ${Number(q.points) === 1 ? 'point' : 'points'}</span>
@@ -315,7 +321,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
             return `<label class="choice" data-choice="${esc(c.id)}" data-selected="${selected}">
               <input type="radio" name="answer" value="${esc(c.id)}" ${selected ? 'checked' : ''}>
               <span class="choice__key">${LETTERS[i] || i + 1}</span>
-              <span class="choice__text">${esc(c.text)}</span>
+              <span class="choice__text">${mdi(c.text)}</span>
             </label>`;
           })
           .join('')}
@@ -335,7 +341,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
             return `<label class="choice" data-choice="${esc(c.id)}" data-selected="${on}">
               <input type="checkbox" name="answer" value="${esc(c.id)}" ${on ? 'checked' : ''}>
               <span class="choice__key">${LETTERS[i] || i + 1}</span>
-              <span class="choice__text">${esc(c.text)}</span>
+              <span class="choice__text">${mdi(c.text)}</span>
             </label>`;
           })
           .join('')}
@@ -396,7 +402,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                 : `<span class="chip chip--plain">Auto-graded</span>`
             }
           </div>
-          <h1 class="runner__prompt" id="runner-prompt" tabindex="-1">${esc(q.prompt)}</h1>
+          <div class="runner__prompt" id="runner-prompt" role="heading" aria-level="1" tabindex="-1">${md(q.prompt)}</div>
           <div class="runner__points">${q.points} ${Number(q.points) === 1 ? 'point' : 'points'}</div>
         </div>
 
@@ -533,7 +539,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       const v = run?.answers[q.id];
       const pv = el.querySelector<HTMLElement>('#answer-preview');
       if (pv && typeof v === 'string' && v) {
-        pv.textContent = v;
+        pv.innerHTML = md(v);
         renderMath(pv);
       }
     }

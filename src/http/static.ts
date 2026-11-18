@@ -10,6 +10,7 @@ const SHARED = path.join(ROOT, 'shared');
 // import map points "hono/client" at /vendor/hono/client/index.js and we serve
 // the whole dist tree from here (its internal imports are relative).
 const VENDOR = path.join(ROOT, 'node_modules', 'hono', 'dist');
+const MARKDOWN = path.join(ROOT, 'node_modules', 'marked', 'lib');
 
 const MIME: Record<string, string> = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -26,6 +27,9 @@ export function serveStatic(c: Context): Response {
   }
   if (pathname.startsWith('/vendor/hono/')) {
     return send(path.join(VENDOR, pathname.slice('/vendor/hono/'.length)), false, VENDOR);
+  }
+  if (pathname.startsWith('/vendor/marked/')) {
+    return send(path.join(MARKDOWN, pathname.slice('/vendor/marked/'.length)), false, MARKDOWN);
   }
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   return send(path.join(WEB, rel), true, WEB);

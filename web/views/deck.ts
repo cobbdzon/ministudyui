@@ -1,7 +1,13 @@
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
-import { debounce, escapeHtml as esc, renderMath } from '../math.js';
+import {
+  debounce,
+  escapeHtml as esc,
+  markdown as md,
+  markdownInline as mdi,
+  renderMath,
+} from '../math.js';
 import type { CardDto, CardScheduleInput, DeckSummary, QuizSummary, Source } from '../../shared/types.js';
 import { confirmDanger, dialog, dueInLabel, minutesUntil, plural, sourceMark, toast } from '../ui.js';
 
@@ -107,7 +113,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       <header class="page-head">
         <div class="page-head__text">
           <h1 class="page-title">${esc(deck?.name || 'Deck')}</h1>
-          <p class="page-sub">${esc(deck?.description || 'Add cards with LaTeX that renders as you type.')}</p>
+          <div class="page-sub">${md(deck?.description || 'Add cards with Markdown and LaTeX that render as you type.')}</div>
           ${
             linkedQuizzes[0]
               ? `<div class="linked-item">
@@ -175,14 +181,14 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                       }" title="${esc(t.title)}" aria-label="${esc(t.title)}">${esc(t.label)}</button>`
                   ).join('')}
                 </div>
-                <textarea class="textarea textarea--mono textarea--tall" id="card-front" maxlength="4000" placeholder="Question, prompt, or term. Use $...$ for math."></textarea>
+                <textarea class="textarea textarea--mono textarea--tall" id="card-front" maxlength="4000" placeholder="Question, prompt, or term. Markdown and $...$ math work here."></textarea>
               </div>
               <div class="field">
                 <div class="field__row">
                   <label class="field__label" for="card-back">Back</label>
                   <span class="field__count" id="back-count">0 / 4000</span>
                 </div>
-                <textarea class="textarea textarea--mono" id="card-back" maxlength="4000" placeholder="The answer. Math works here too."></textarea>
+                <textarea class="textarea textarea--mono" id="card-back" maxlength="4000" placeholder="The answer. Markdown and math work here too."></textarea>
               </div>
               <div class="field">
                 <span class="field__label">Tags</span>
@@ -228,7 +234,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                   <div class="preview-card__body" id="preview-back"></div>
                 </div>
               </div>
-              <p class="muted" style="font: var(--md-sys-typescale-body-small)">Inline math uses $…$, display math uses $$…$$. Broken formulas stay inline instead of breaking the page.</p>
+              <p class="muted" style="font: var(--md-sys-typescale-body-small)">Markdown works here, along with $…$ for inline math and $$…$$ for display math. Broken formulas stay inline instead of breaking the page.</p>
             </div>
           </div>
           <footer class="editor__actions">
@@ -245,6 +251,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     bindShell();
     renderList();
     loadIntoEditor();
+    renderMath(el.querySelector('.page-sub'));
   }
 
   function renderList() {
@@ -262,7 +269,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         (c) => `<button class="card-list__item" role="option" data-id="${c.id}" aria-selected="${
           String(c.id) === String(selectedId) ? 'true' : 'false'
         }">
-          <span class="card-list__front">${esc(c.front)}</span>
+          <span class="card-list__front">${mdi(c.front)}</span>
           <span class="card-list__meta">${esc(sourceLabel(c))}${c.tags?.length ? ` · ${esc(c.tags[0])}` : ''}</span>
           <span class="card-list__sched">
             <span class="${scheduleChipClass(c)}" data-countdown="${esc(c.due_at)}" title="${esc(dueTitle(c.due_at))}">${esc(dueInLabel(c.due_at))}</span>
@@ -560,8 +567,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const frontEl = el.querySelector('#preview-front');
     const backEl = el.querySelector('#preview-back');
     if (!frontEl || !backEl) return;
-    frontEl.textContent = draft.front;
-    backEl.textContent = draft.back;
+    frontEl.innerHTML = md(draft.front);
+    backEl.innerHTML = md(draft.back);
     renderMath(frontEl);
     renderMath(backEl);
     updateCounts();
