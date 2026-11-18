@@ -1,10 +1,13 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc, renderMath } from '../math.js';
 import { plural, toast } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { ChangeEvent } from '../../shared/types.js';
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   let disposed = false;
-  let refreshTimer = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function render() {
     const [data, decksRes] = await Promise.all([ctx.api.quizzes(), ctx.api.decks()]);
@@ -66,8 +69,8 @@ export async function mount(el, ctx) {
             </div>`
       }`;
     el.querySelectorAll('.list__desc').forEach((d) => renderMath(d));
-    el.querySelectorAll('.quiz-deck').forEach((chip) => {
-      const go = (e) => {
+    el.querySelectorAll<HTMLElement>('.quiz-deck').forEach((chip) => {
+      const go = (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
         ctx.go(`#/deck/${chip.dataset.deck}`);
@@ -85,7 +88,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">Quizzes didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The local server did not answer.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The local server did not answer.'))}</p>
       <button class="btn btn--tonal" id="quizzes-retry">Try again</button>
     </div>`;
     el.querySelector('#quizzes-retry')?.addEventListener('click', () => render().catch(() => {}));
@@ -94,9 +97,9 @@ export async function mount(el, ctx) {
     };
   }
 
-  const off = ctx.onChange((changes) => {
-    if (!changes.some((c) => c.entity === 'quiz')) return;
-    clearTimeout(refreshTimer);
+  const off = ctx.onChange((changes: ChangeEvent[]) => {
+    if (!changes.some((c: ChangeEvent) => c.entity === 'quiz')) return;
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed) return;
       render().catch(() => toast('Could not refresh quizzes', { type: 'error' }));
@@ -105,7 +108,7 @@ export async function mount(el, ctx) {
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }

@@ -1,28 +1,31 @@
 import { icon } from '../icons.js';
 import { escapeHtml as esc, renderMath } from '../math.js';
 import { plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
+import type { AnswerRow, AttemptRow, ChangeEvent, QuizQuestionDto, QuizRow } from '../../shared/types.js';
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   const attemptId = ctx.params[0];
   let disposed = false;
-  let refreshTimer = null;
-  let attempt = null;
-  let answers = [];
-  let quiz = null;
-  let questions = [];
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let attempt: AttemptRow | null = null;
+  let answers: AnswerRow[] = [];
+  let quiz: QuizRow | null = null;
+  let questions: QuizQuestionDto[] = [];
 
-  function answerFor(q) {
+  function answerFor(q: QuizQuestionDto) {
     return answers.find((a) => Number(a.question_id) === Number(q.id));
   }
 
-  function responseText(q, raw) {
+  function responseText(q: QuizQuestionDto, raw: string) {
     if (raw === undefined || raw === null || String(raw).trim() === '') return '';
     if (q.type === 'mcq') {
       const choice = (q.choices || []).find((c) => String(c.id) === String(raw));
       return choice ? choice.text : String(raw);
     }
     if (q.type === 'multi') {
-      let ids = [];
+      let ids: unknown[] = [];
       try {
         ids = JSON.parse(raw);
       } catch {
@@ -35,14 +38,14 @@ export async function mount(el, ctx) {
     return String(raw);
   }
 
-  function correctText(q) {
+  function correctText(q: QuizQuestionDto) {
     const ans = q.answer || {};
     if (q.type === 'mcq') {
       const choice = (q.choices || []).find((c) => String(c.id) === String(ans.correct));
       return choice ? choice.text : String(ans.correct ?? '');
     }
     if (q.type === 'multi') {
-      return (ans.correct || [])
+      return ((ans.correct as string[] | undefined) || [])
         .map((id) => (q.choices || []).find((c) => String(c.id) === String(id))?.text || id)
         .join(' · ');
     }
@@ -55,7 +58,7 @@ export async function mount(el, ctx) {
     return ans.reference || '';
   }
 
-  function outcome(a, q) {
+  function outcome(a: AnswerRow | undefined, q: QuizQuestionDto) {
     if (!a) return `<span class="result-outcome result-outcome--no">${icon('cancel')}Not answered</span>`;
     if (a.grading_status === 'pending')
       return `<span class="result-outcome result-outcome--pending pending-pulse">${icon('schedule')}Awaiting AI</span>`;
@@ -64,13 +67,14 @@ export async function mount(el, ctx) {
     return `<span class="result-outcome">${icon('edit')}Partial</span>`;
   }
 
-  function pointsLabel(a, q) {
+  function pointsLabel(a: AnswerRow | undefined, q: QuizQuestionDto) {
     if (!a) return `0 / ${q.points}`;
     if (a.grading_status === 'pending') return `— / ${q.points}`;
     return `${a.points_awarded ?? 0} / ${q.points}`;
   }
 
   function render() {
+    if (!attempt || !quiz) return;
     const pending = answers.filter((a) => a.grading_status === 'pending').length;
     const pct = attempt.max_score ? Math.round(((attempt.score || 0) / attempt.max_score) * 100) : 0;
     const inProgress = attempt.status === 'in_progress';
@@ -170,7 +174,7 @@ export async function mount(el, ctx) {
   }
 
   async function load() {
-    const data = await ctx.api.attempt(attemptId);
+    const data = await ctx.api.attempt(attemptId as unknown as number);
     if (!data?.attempt) throw new Error('Attempt not found');
     attempt = data.attempt;
     answers = data.answers || [];
@@ -186,7 +190,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">This attempt didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'It may have been deleted.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'It may have been deleted.'))}</p>
       <a class="btn btn--tonal" href="#/quizzes">Back to quizzes</a>
     </div>`;
     return () => {
@@ -194,9 +198,9 @@ export async function mount(el, ctx) {
     };
   }
 
-  const off = ctx.onChange((changes) => {
-    if (!changes.some((c) => c.entity === 'answer' || c.entity === 'attempt')) return;
-    clearTimeout(refreshTimer);
+  const off = ctx.onChange((changes: ChangeEvent[]) => {
+    if (!changes.some((c: ChangeEvent) => c.entity === 'answer' || c.entity === 'attempt')) return;
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed) return;
       load().catch(() => toast('Could not refresh the result', { type: 'error' }));
@@ -205,7 +209,7 @@ export async function mount(el, ctx) {
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }

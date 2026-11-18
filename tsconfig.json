@@ -15,6 +15,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "test", "scripts"],
-  "exclude": ["node_modules", "web"]
+  "include": ["src", "test", "scripts", "web", "shared"],
+  "exclude": ["node_modules"]
 }

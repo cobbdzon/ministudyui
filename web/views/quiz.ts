@@ -1,40 +1,50 @@
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
 import { debounce, escapeHtml as esc, renderMath } from '../math.js';
+import type { AttemptRow, AttemptStart, DeckSummary, QuizQuestionDto, QuizRow } from '../../shared/types.js';
 import { confirmDanger, dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
 
 const LETTERS = 'ABCDEFGH';
 
-export async function mount(el, ctx) {
+type QuizRun = {
+  attempt: AttemptRow | AttemptStart;
+  answers: Record<number, string | string[]>;
+  flags: Set<number>;
+  index: number;
+};
+
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   const quizId = ctx.params[0];
   let disposed = false;
-  let quiz = null;
-  let questions = [];
-  let attempts = [];
-  let decks = [];
-  let mode = 'overview';
-  let run = null;
-  let refreshTimer = null;
+  let quiz: QuizRow | null = null;
+  let questions: QuizQuestionDto[] = [];
+  let attempts: AttemptRow[] = [];
+  let decks: DeckSummary[] = [];
+  let mode: 'overview' | 'run' = 'overview';
+  let run: QuizRun | null = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const previewMath = debounce(() => {
-    const pv = el.querySelector('#answer-preview');
-    const ta = el.querySelector('#text-answer');
+    const pv = el.querySelector<HTMLElement>('#answer-preview');
+    const ta = el.querySelector<HTMLTextAreaElement>('#text-answer');
     if (!pv || !ta) return;
     pv.textContent = ta.value;
     renderMath(pv);
   }, 140);
 
-  function deckName() {
+  function deckName(): string {
     const d = decks.find((x) => String(x.id) === String(quiz?.deck_id));
     return d?.name || '';
   }
 
-  function totalPoints() {
+  function totalPoints(): number {
     return questions.reduce((a, q) => a + (Number(q.points) || 0), 0);
   }
 
-  async function loadOverview() {
+  async function loadOverview(): Promise<void> {
     const [quizRes, quizzesRes, attemptsRes, decksRes] = await Promise.allSettled([
-      ctx.api.quiz(quizId, { includeAnswers: false }),
+      ctx.api.quiz(Number(quizId), { includeAnswers: false }),
       ctx.api.quizzes(),
       ctx.api.attempts({ quizId: Number(quizId), limit: 20 }),
       ctx.api.decks(),
@@ -48,7 +58,8 @@ export async function mount(el, ctx) {
     renderOverview();
   }
 
-  function renderOverview() {
+  function renderOverview(): void {
+    if (!quiz) return;
     const inProgress = attempts.find((a) => a.status === 'in_progress');
     const past = attempts.filter((a) => a.status !== 'in_progress');
     const linked = deckName()
@@ -142,7 +153,7 @@ export async function mount(el, ctx) {
     el.querySelectorAll('.question-preview__prompt').forEach((p) => renderMath(p));
   }
 
-  function openDeleteQuiz() {
+  function openDeleteQuiz(): void {
     if (!quiz) return;
     const name = deckName();
     dialog({
@@ -167,13 +178,16 @@ export async function mount(el, ctx) {
         { label: 'Cancel', value: 'cancel' },
         { label: 'Delete quiz', value: 'delete', variant: 'btn--filled', danger: true },
       ],
-      onMount(root) {
-        const input = root.querySelector('#quiz-delete-title');
-        const keep = root.querySelector('#keep-deck');
-        const hint = root.querySelector('#delete-quiz-hint');
-        const submit = root.querySelector('button[value="delete"]');
+      onMount(root: HTMLElement) {
+        if (!quiz) return;
+        const q = quiz;
+        const input = root.querySelector<HTMLInputElement>('#quiz-delete-title');
+        const keep = root.querySelector<HTMLInputElement>('#keep-deck');
+        const hint = root.querySelector<HTMLElement>('#delete-quiz-hint');
+        const submit = root.querySelector<HTMLButtonElement>('button[value="delete"]');
+        if (!input) return;
         const update = () => {
-          if (submit) submit.disabled = input.value.trim() !== quiz.title;
+          if (submit) submit.disabled = input.value.trim() !== q.title;
           if (keep && hint)
             hint.textContent = keep.checked
               ? 'The deck and its cards stay; only this quiz is removed.'
@@ -183,25 +197,26 @@ export async function mount(el, ctx) {
         keep?.addEventListener('change', update);
         update();
         input.focus();
-        root.addEventListener('submit', async (e) => {
-          if (e.submitter?.value !== 'delete' || input.value.trim() !== quiz.title) return;
+        root.addEventListener('submit', async (e: SubmitEvent) => {
+          const submitter = e.submitter instanceof HTMLButtonElement ? e.submitter : null;
+          if (submitter?.value !== 'delete' || input.value.trim() !== q.title) return;
           try {
-            await ctx.api.deleteQuiz(quizId, quiz.title, keep ? !keep.checked : false);
-            toast(`Quiz “${quiz.title}” deleted`);
+            await ctx.api.deleteQuiz(Number(quizId), q.title, keep ? !keep.checked : false);
+            toast(`Quiz “${q.title}” deleted`);
             ctx.go('#/quizzes');
           } catch (err) {
-            toast(err.message || 'Could not delete the quiz', { type: 'error' });
+            toast(errorMessage(err, 'Could not delete the quiz'), { type: 'error' });
           }
         });
       },
     });
   }
 
-  function escapeScore(a) {
+  function escapeScore(a: AttemptRow): string {
     return esc(fmtScore(a.score ?? 0, a.max_score ?? 0));
   }
 
-  async function startAttempt() {
+  async function startAttempt(): Promise<void> {
     try {
       const inProgress = attempts.find((a) => a.status === 'in_progress');
       if (inProgress) {
@@ -218,21 +233,21 @@ export async function mount(el, ctx) {
       run = {
         attempt: res.attempt,
         answers: {},
-        flags: new Set(),
+        flags: new Set<number>(),
         index: 0,
       };
       mode = 'run';
       renderRun();
     } catch (err) {
-      toast(err.message || 'Could not start the attempt', { type: 'error' });
+      toast(errorMessage(err, 'Could not start the attempt'), { type: 'error' });
     }
   }
 
-  async function resumeAttempt(attemptRow) {
+  async function resumeAttempt(attemptRow: AttemptRow | undefined): Promise<void> {
     if (!attemptRow) return;
     try {
       const data = await ctx.api.attempt(attemptRow.id);
-      const answers = {};
+      const answers: Record<number, string | string[]> = {};
       for (const a of data.answers || []) {
         if (a.response !== null && a.response !== undefined) answers[a.question_id] = a.response;
       }
@@ -243,28 +258,29 @@ export async function mount(el, ctx) {
       run = {
         attempt: data.attempt || attemptRow,
         answers,
-        flags: new Set(),
+        flags: new Set<number>(),
         index: firstUnanswered >= 0 ? firstUnanswered : 0,
       };
       mode = 'run';
       renderRun();
     } catch (err) {
-      toast(err.message || 'Could not resume the attempt', { type: 'error' });
+      toast(errorMessage(err, 'Could not resume the attempt'), { type: 'error' });
     }
   }
 
-  function currentQuestion() {
-    return questions[run.index];
+  function currentQuestion(): QuizQuestionDto | undefined {
+    return run ? questions[run.index] : undefined;
   }
 
-  function hasAnswer(q) {
+  function hasAnswer(q: QuizQuestionDto): boolean {
+    if (!run) return false;
     const v = run.answers[q.id];
     if (v === undefined || v === null) return false;
     if (Array.isArray(v)) return v.length > 0;
     return String(v).trim().length > 0;
   }
 
-  async function saveCurrent({ silent = true } = {}) {
+  async function saveCurrent({ silent = true }: { silent?: boolean } = {}): Promise<void> {
     if (!run) return;
     const q = currentQuestion();
     if (!q) return;
@@ -273,12 +289,12 @@ export async function mount(el, ctx) {
     try {
       await ctx.api.answerAttempt(run.attempt.id, q.id, value);
     } catch (err) {
-      if (!silent) toast(err.message || 'Could not save this answer', { type: 'error' });
+      if (!silent) toast(errorMessage(err, 'Could not save this answer'), { type: 'error' });
       else throw err;
     }
   }
 
-  async function goTo(index) {
+  async function goTo(index: number): Promise<void> {
     if (!run || index < 0 || index >= questions.length) return;
     try {
       await saveCurrent({ silent: true });
@@ -289,8 +305,8 @@ export async function mount(el, ctx) {
     renderRun();
   }
 
-  function answerSlot(q) {
-    const value = run.answers[q.id];
+  function answerSlot(q: QuizQuestionDto): string {
+    const value = run?.answers[q.id];
     if (q.type === 'mcq') {
       return `<div class="choices" role="radiogroup" aria-label="Answer choices">
         ${(q.choices || [])
@@ -306,9 +322,9 @@ export async function mount(el, ctx) {
       </div>`;
     }
     if (q.type === 'multi') {
-      let selected = [];
+      let selected: string[] = [];
       try {
-        selected = Array.isArray(value) ? value : JSON.parse(value || '[]');
+        selected = Array.isArray(value) ? value : (JSON.parse(value || '[]') as string[]);
       } catch {
         selected = [];
       }
@@ -350,9 +366,11 @@ export async function mount(el, ctx) {
     </div>`;
   }
 
-  function renderRun() {
+  function renderRun(): void {
     const q = currentQuestion();
     if (!q) return;
+    if (!run) return;
+    const currentRun = run;
     const total = questions.length;
     const i = run.index;
     const answered = questions.filter(hasAnswer).length;
@@ -403,9 +421,9 @@ export async function mount(el, ctx) {
             .map(
               (item, idx) => `<button class="runner-dot" data-jump="${idx}" data-current="${
                 idx === i
-              }" data-answered="${hasAnswer(item)}" data-flagged="${run.flags.has(item.id)}" aria-label="Question ${
+              }" data-answered="${hasAnswer(item)}" data-flagged="${currentRun.flags.has(item.id)}" aria-label="Question ${
                 idx + 1
-              }${hasAnswer(item) ? ', answered' : ''}${run.flags.has(item.id) ? ', flagged' : ''}"${
+              }${hasAnswer(item) ? ', answered' : ''}${currentRun.flags.has(item.id) ? ', flagged' : ''}"${
                 idx === i ? ' aria-current="step"' : ''
               }>${idx + 1}</button>`
             )
@@ -420,42 +438,53 @@ export async function mount(el, ctx) {
     bindRun(q);
     renderMath(el.querySelector('#runner-prompt'));
     renderMath(el.querySelector('#answer-slot'));
-    el.querySelector('#runner-prompt')?.focus({ preventScroll: true });
+    el.querySelector<HTMLElement>('#runner-prompt')?.focus({ preventScroll: true });
   }
 
-  function updateChoiceUi() {
+  function updateChoiceUi(): void {
     const q = currentQuestion();
     if (!q) return;
-    el.querySelectorAll('.choice').forEach((label) => {
-      const input = label.querySelector('input');
+    if (!run) return;
+    const currentRun = run;
+    el.querySelectorAll<HTMLElement>('.choice').forEach((label) => {
+      const input = label.querySelector<HTMLInputElement>('input');
+      if (!input) return;
       label.dataset.selected = String(input.checked);
     });
-    const dots = el.querySelectorAll('.runner-dot');
+    const dots = el.querySelectorAll<HTMLElement>('.runner-dot');
     const answered = questions.filter(hasAnswer).length;
-    const counter = el.querySelector('.row--between .section-meta');
+    const counter = el.querySelector<HTMLElement>('.row--between .section-meta');
     if (counter) counter.textContent = `${answered} of ${questions.length} answered`;
     dots.forEach((d, idx) => {
       d.dataset.answered = String(hasAnswer(questions[idx]));
       d.setAttribute(
         'aria-label',
         `Question ${idx + 1}${hasAnswer(questions[idx]) ? ', answered' : ''}${
-          run.flags.has(questions[idx].id) ? ', flagged' : ''
+          currentRun.flags.has(questions[idx].id) ? ', flagged' : ''
         }`
       );
     });
   }
 
-  function bindRun(q) {
+  function bindRun(q: QuizQuestionDto): void {
     el.querySelector('#runner-close')?.addEventListener('click', async () => {
       await saveCurrent({ silent: true }).catch(() => {});
       await loadOverview().catch(() => {});
     });
-    el.querySelector('#prev')?.addEventListener('click', () => goTo(run.index - 1));
-    el.querySelector('#next')?.addEventListener('click', () => goTo(run.index + 1));
+    el.querySelector('#prev')?.addEventListener('click', () => {
+      if (!run) return;
+      goTo(run.index - 1);
+    });
+    el.querySelector('#next')?.addEventListener('click', () => {
+      if (!run) return;
+      goTo(run.index + 1);
+    });
     el.querySelector('#submit')?.addEventListener('click', submitQuiz);
 
-    el.querySelector('#flag')?.addEventListener('click', (e) => {
+    el.querySelector('#flag')?.addEventListener('click', (e: Event) => {
+      if (!run) return;
       const btn = e.currentTarget;
+      if (!(btn instanceof HTMLElement)) return;
       if (run.flags.has(q.id)) run.flags.delete(q.id);
       else run.flags.add(q.id);
       const on = run.flags.has(q.id);
@@ -464,47 +493,53 @@ export async function mount(el, ctx) {
       el.querySelector(`.runner-dot[data-jump="${run.index}"]`)?.setAttribute('data-flagged', String(on));
     });
 
-    el.querySelectorAll('[data-jump]').forEach((dot) => {
+    el.querySelectorAll<HTMLElement>('[data-jump]').forEach((dot) => {
       dot.addEventListener('click', () => goTo(Number(dot.dataset.jump)));
     });
 
     if (q.type === 'mcq') {
-      el.querySelectorAll('input[name="answer"]').forEach((input) => {
+      el.querySelectorAll<HTMLInputElement>('input[name="answer"]').forEach((input) => {
         input.addEventListener('change', () => {
+          if (!run) return;
           run.answers[q.id] = input.value;
           updateChoiceUi();
         });
       });
     } else if (q.type === 'multi') {
-      el.querySelectorAll('input[name="answer"]').forEach((input) => {
+      el.querySelectorAll<HTMLInputElement>('input[name="answer"]').forEach((input) => {
         input.addEventListener('change', () => {
-          const picked = [...el.querySelectorAll('input[name="answer"]:checked')].map((i) => i.value);
+          if (!run) return;
+          const picked = [...el.querySelectorAll<HTMLInputElement>('input[name="answer"]:checked')].map((i) => i.value);
           run.answers[q.id] = picked;
           updateChoiceUi();
         });
       });
     } else if (q.type === 'numeric') {
-      el.querySelector('#numeric-answer')?.addEventListener('input', (e) => {
-        run.answers[q.id] = e.target.value;
+      el.querySelector<HTMLInputElement>('#numeric-answer')?.addEventListener('input', (e: Event) => {
+        if (!run) return;
+        const target = e.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        run.answers[q.id] = target.value;
         updateChoiceUi();
       });
     } else {
-      const ta = el.querySelector('#text-answer');
+      const ta = el.querySelector<HTMLTextAreaElement>('#text-answer');
       ta?.addEventListener('input', () => {
+        if (!run) return;
         run.answers[q.id] = ta.value;
         previewMath();
         updateChoiceUi();
       });
-      const v = run.answers[q.id];
-      const pv = el.querySelector('#answer-preview');
-      if (pv && v) {
+      const v = run?.answers[q.id];
+      const pv = el.querySelector<HTMLElement>('#answer-preview');
+      if (pv && typeof v === 'string' && v) {
         pv.textContent = v;
         renderMath(pv);
       }
     }
   }
 
-  async function submitQuiz() {
+  async function submitQuiz(): Promise<void> {
     if (!run) return;
     await saveCurrent({ silent: true }).catch(() => {});
     const answered = questions.filter(hasAnswer).length;
@@ -532,15 +567,17 @@ export async function mount(el, ctx) {
       const id = res.attempt?.id || run.attempt.id;
       ctx.go(`#/attempt/${id}`);
     } catch (err) {
-      toast(err.message || 'Could not submit the quiz', { type: 'error' });
+      toast(errorMessage(err, 'Could not submit the quiz'), { type: 'error' });
     }
   }
 
-  function onKey(e) {
+  function onKey(e: KeyboardEvent): void {
     if (mode !== 'run' || !run) return;
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
-    const tag = (e.target.tagName || '').toLowerCase();
-    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const tag = (target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       if (run.index === questions.length - 1) submitQuiz();
@@ -567,20 +604,21 @@ export async function mount(el, ctx) {
       if (!choice) return;
       e.preventDefault();
       if (q.type === 'multi') {
-        let picked = [];
+        let picked: string[] = [];
         try {
-          picked = Array.isArray(run.answers[q.id]) ? [...run.answers[q.id]] : JSON.parse(run.answers[q.id] || '[]');
+          const existing: string | string[] | undefined = run.answers[q.id];
+          picked = Array.isArray(existing) ? [...existing] : (JSON.parse(existing || '[]') as string[]);
         } catch {
           picked = [];
         }
         picked = picked.includes(choice.id) ? picked.filter((x) => x !== choice.id) : [...picked, choice.id];
         run.answers[q.id] = picked;
-        const input = el.querySelector(`input[value="${choice.id}"]`);
+        const input = el.querySelector<HTMLInputElement>(`input[value="${choice.id}"]`);
         if (input) input.checked = picked.includes(choice.id);
         updateChoiceUi();
       } else if (q.type === 'mcq') {
         run.answers[q.id] = choice.id;
-        const input = el.querySelector(`input[value="${choice.id}"]`);
+        const input = el.querySelector<HTMLInputElement>(`input[value="${choice.id}"]`);
         if (input) input.checked = true;
         updateChoiceUi();
       }
@@ -595,7 +633,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">This quiz didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The quiz may have been deleted.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The quiz may have been deleted.'))}</p>
       <a class="btn btn--tonal" href="#/quizzes">Back to quizzes</a>
     </div>`;
     return () => {
@@ -607,7 +645,7 @@ export async function mount(el, ctx) {
   const off = ctx.onChange((changes) => {
     if (mode !== 'overview') return;
     if (!changes.some((c) => c.entity === 'attempt' || c.entity === 'answer')) return;
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed || mode !== 'overview') return;
       loadOverview().catch(() => {});
@@ -617,7 +655,7 @@ export async function mount(el, ctx) {
   return () => {
     disposed = true;
     document.removeEventListener('keydown', onKey);
-    clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer ?? undefined);
     off();
   };
 }

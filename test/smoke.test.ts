@@ -5,6 +5,13 @@ import { gradeAuto } from '../src/boxes/grader/index.js';
 import * as store from '../src/boxes/store/index.js';
 import * as library from '../src/boxes/library/index.js';
 import * as attempts from '../src/boxes/attempts/index.js';
+import type { DeckRow, QuizRow, QuizSummary } from '../shared/types.js';
+
+function hasCode(e: unknown, code: string, field?: string): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const o = e as { code?: unknown; field?: unknown };
+  return o.code === code && (field === undefined || o.field === field);
+}
 
 test('srs again does not increase interval and ordering holds', () => {
   const st = { ease: 2.5, interval_days: 3, reps: 2, lapses: 0 };
@@ -15,17 +22,17 @@ test('srs again does not increase interval and ordering holds', () => {
   assert.ok(p.hard.endsWith('d'));
   assert.ok(p.good.endsWith('d'));
   assert.ok(p.easy.endsWith('d'));
-  const n = (x: any) => x === '10m' ? 0 : parseInt(x);
+  const n = (x: string) => x === '10m' ? 0 : parseInt(x);
   assert.ok(n(p.again) <= n(p.hard));
   assert.ok(n(p.hard) <= n(p.good));
   assert.ok(n(p.good) <= n(p.easy));
 });
 
 test('grader numeric tolerance', () => {
-  const q = { type: 'numeric', answer_json: { value: 9.81, tolerance: 0.01, tolerance_type: 'abs', unit: null }, points: 1 };
+  const q = { type: 'numeric' as const, answer_json: { value: 9.81, tolerance: 0.01, tolerance_type: 'abs' as const, unit: null }, points: 1 };
   assert.equal(gradeAuto(q, '9.81').is_correct, 1);
   assert.equal(gradeAuto(q, '10').is_correct, 0);
-  const q2 = { type: 'mcq', answer_json: { correct: 'b' }, points: 1 };
+  const q2 = { type: 'mcq' as const, answer_json: { correct: 'b' }, points: 1 };
   assert.equal(gradeAuto(q2, 'b').points, 1);
 });
 
@@ -45,17 +52,18 @@ test('deckUpdate renames, preserves fields on partial update, and rejects confli
     assert.equal(partial.deck.name, 'Gamma');
     assert.equal(partial.deck.description, 'Updated');
 
-    const listed = library.deckList().find((d: any) => d.id === a.id);
+    const listed = library.deckList().find((d: DeckRow) => d.id === a.id);
+    assert.ok(listed);
     assert.equal(listed.name, 'Gamma');
     assert.equal(listed.description, 'Updated');
 
     assert.throws(
       () => library.deckUpdate({ deck: a.id, name: 'beta' }),
-      (e: any) => e.code === 'CONFLICT' && e.field === 'name'
+      (e: unknown) => hasCode(e, 'CONFLICT', 'name')
     );
     assert.throws(
       () => library.deckUpdate({ deck: b.id }),
-      (e: any) => e.code === 'VALIDATION'
+      (e: unknown) => hasCode(e, 'VALIDATION')
     );
   } finally {
     store.close();
@@ -73,7 +81,7 @@ test('quiz editing updates only supplied fields and preserves answer keys', () =
       deck: d.id,
       questions: [
         { type: 'mcq', prompt: 'First?', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'b', points: 2 },
-        { type: 'numeric', prompt: 'Second?', value: 5, tolerance: 0.1, unit: 'm', points: 1 },
+        { type: 'numeric', prompt: 'Second?', value: 5, tolerance: 0.1, tolerance_type: 'abs', unit: 'm', points: 1 },
       ],
     });
     const outline = library.quizOutline({ quizId: quiz.id });
@@ -87,13 +95,15 @@ test('quiz editing updates only supplied fields and preserves answer keys', () =
     assert.equal(updated.question_ids.length, 2);
     const after = library.quizGet({ quizId: quiz.id, includeAnswers: true });
     assert.equal(after.questions[0].prompt, 'First (edited)?');
+    assert.ok(after.questions[0].choices);
     assert.equal(after.questions[0].choices.length, 2);
     assert.deepEqual(after.questions[0].answer, { correct: 'b' });
     assert.equal(after.questions[0].points, 2);
     assert.deepEqual(after.questions[1].answer, { value: 7, tolerance: 0.1, tolerance_type: 'abs', unit: 'm' });
 
     library.quizUpdate({ quizId: quiz.id, title: 'New title' });
-    const meta = library.quizList({}).find((q: any) => q.id === quiz.id);
+    const meta = library.quizList({}).find((q: QuizSummary) => q.id === quiz.id);
+    assert.ok(meta);
     assert.equal(meta.title, 'New title');
     assert.equal(meta.description, 'Original description');
 
@@ -105,7 +115,7 @@ test('quiz editing updates only supplied fields and preserves answer keys', () =
 
     assert.throws(
       () => library.quizDelete({ quizId: quiz.id, confirmTitle: 'wrong' }),
-      (e: any) => e.code === 'VALIDATION'
+      (e: unknown) => hasCode(e, 'VALIDATION')
     );
     assert.equal(library.quizDelete({ quizId: quiz.id, confirmTitle: 'New title' }).ok, true);
     assert.equal(library.quizList({}).length, 0);
@@ -148,7 +158,7 @@ test('restart discards in-progress attempts and their pending AI-graded answers'
     assert.equal(attempts.list({ quizId: quiz.id, limit: 20 }).length, 1);
     assert.throws(
       () => attempts.restart({ quizId: 9999 }),
-      (e: any) => e.code === 'NOT_FOUND'
+      (e: unknown) => hasCode(e, 'NOT_FOUND')
     );
   } finally {
     store.close();
@@ -187,6 +197,7 @@ test('importBundle creates decks, cards and quizzes with import provenance', () 
     const full = library.quizGet({ quizId: quiz.id, includeAnswers: true });
     assert.equal(full.quiz.source, 'import');
     assert.deepEqual(full.questions[0].answer, { correct: 'b' });
+    assert.ok(full.questions[1].answer);
     assert.equal(full.questions[1].answer.reference, 'x^2');
 
     // Re-importing the same deck name reuses it rather than conflicting.
@@ -213,7 +224,7 @@ test('importBundle rejects invalid items atomically', () => {
           questions: [{ type: 'mcq', prompt: 'P', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'z' }],
         }],
       }),
-      (e: any) => e.code === 'VALIDATION' && e.field === 'quizzes[0].questions[0].correct'
+      (e: unknown) => hasCode(e, 'VALIDATION', 'quizzes[0].questions[0].correct')
     );
     // Nothing was written: validation happens before the single transaction.
     assert.equal(store.all('SELECT * FROM decks').length, 0);
@@ -222,8 +233,8 @@ test('importBundle rejects invalid items atomically', () => {
     assert.equal(store.all('SELECT * FROM questions').length, 0);
 
     assert.throws(
-      () => library.importBundle({} as any),
-      (e: any) => e.code === 'VALIDATION'
+      () => library.importBundle({}),
+      (e: unknown) => hasCode(e, 'VALIDATION')
     );
   } finally {
     store.close();
@@ -232,7 +243,7 @@ test('importBundle rejects invalid items atomically', () => {
 
 const quizSeed = (title: string, deck?: number) => ({
   title, deck,
-  questions: [{ type: 'short', prompt: 'P', reference: 'R' }],
+  questions: [{ type: 'short' as const, prompt: 'P', reference: 'R' }],
 });
 
 test('deleting a deck keeps linked quizzes by default and can remove them too', () => {
@@ -244,7 +255,7 @@ test('deleting a deck keeps linked quizzes by default and can remove them too', 
     const q = library.quizCreate(quizSeed('LinkedQuiz', d.id));
 
     library.deckDelete({ deck: d.id, confirmName: 'LinkedDeck' });
-    assert.equal(store.get('SELECT * FROM quizzes WHERE id=?', [q.id]).deck_id, null);
+    assert.equal(store.get<QuizRow>('SELECT * FROM quizzes WHERE id=?', [q.id])?.deck_id, null);
     assert.equal(store.get('SELECT * FROM decks WHERE id=?', [d.id]), null);
     assert.equal(store.all('SELECT * FROM cards').length, 0);
 
@@ -255,7 +266,7 @@ test('deleting a deck keeps linked quizzes by default and can remove them too', 
     const keeper = library.deckCreate({ name: 'Keeper' });
     assert.throws(
       () => library.deckDelete({ deck: keeper.id, confirmName: 'wrong' }),
-      (e: any) => e.code === 'VALIDATION' && e.field === 'confirm_name'
+      (e: unknown) => hasCode(e, 'VALIDATION', 'confirm_name')
     );
   } finally {
     store.close();
@@ -279,7 +290,7 @@ test('deleting a quiz can also delete its linked deck', () => {
     const other = library.quizCreate(quizSeed('OtherQuiz', d2.id));
     assert.throws(
       () => library.quizDelete({ quizId: other.id, confirmTitle: 'wrong' }),
-      (e: any) => e.code === 'VALIDATION' && e.field === 'confirm_title'
+      (e: unknown) => hasCode(e, 'VALIDATION', 'confirm_title')
     );
   } finally {
     store.close();
@@ -295,13 +306,13 @@ test('a deck can only have one linked quiz', () => {
     library.quizCreate(quizSeed('First', a.id));
     assert.throws(
       () => library.quizCreate(quizSeed('Second', a.id)),
-      (e: any) => e.code === 'CONFLICT' && e.field === 'deck'
+      (e: unknown) => hasCode(e, 'CONFLICT', 'deck')
     );
 
     const other = library.quizCreate(quizSeed('Other', b.id));
     assert.throws(
       () => library.quizUpdate({ quizId: other.id, deck: a.id }),
-      (e: any) => e.code === 'CONFLICT' && e.field === 'deck'
+      (e: unknown) => hasCode(e, 'CONFLICT', 'deck')
     );
 
     assert.throws(
@@ -312,10 +323,10 @@ test('a deck can only have one linked quiz', () => {
           { title: 'B', deck: 'DeckC', questions: [{ type: 'short', prompt: 'P', reference: 'R' }] },
         ],
       }),
-      (e: any) => e.code === 'CONFLICT' && e.field === 'quizzes[1].deck'
+      (e: unknown) => hasCode(e, 'CONFLICT', 'quizzes[1].deck')
     );
 
-    const indexes = store.all("PRAGMA index_list('quizzes')").map((i: any) => i.name);
+    const indexes = store.all<{ name: string }>("PRAGMA index_list('quizzes')").map((i) => i.name);
     assert.ok(indexes.includes('idx_quizzes_deck'));
   } finally {
     store.close();

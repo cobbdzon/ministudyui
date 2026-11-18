@@ -1,8 +1,11 @@
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
 import { debounce, escapeHtml as esc, renderMath } from '../math.js';
+import type { CardDto, DeckSummary, QuizSummary, Source } from '../../shared/types.js';
 import { confirmDanger, dialog, plural, sourceMark, toast } from '../ui.js';
 
-const TOOLBAR = [
+const TOOLBAR: Array<{ label: string; snippet: string; caret: number | null; title: string }> = [
   { label: '$…$', snippet: '$$', caret: 1, title: 'Inline math' },
   { label: '$$…$$', snippet: '$$$$', caret: 2, title: 'Display math' },
   { label: 'x²', snippet: '^{}', caret: 2, title: 'Superscript' },
@@ -12,18 +15,18 @@ const TOOLBAR = [
   { label: 'matrix', snippet: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}', caret: null, title: '2×2 matrix' },
 ];
 
-export async function mount(el, ctx) {
+export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
   let disposed = false;
-  let deckId = ctx.params[0];
-  let deck = null;
-  let cards = [];
-  let linkedQuizzes = [];
-  let selectedId = null;
-  let draft = { front: '', back: '', tags: [] };
-  let saved = { front: '', back: '', tags: [], source: 'user' };
-  let activeField = 'front';
+  let deckId: string | number = ctx.params[0] ?? '';
+  let deck: DeckSummary | null = null;
+  let cards: CardDto[] = [];
+  let linkedQuizzes: QuizSummary[] = [];
+  let selectedId: number | null = null;
+  let draft: { front: string; back: string; tags: string[] } = { front: '', back: '', tags: [] };
+  let saved: { front: string; back: string; tags: string[]; source: Source } = { front: '', back: '', tags: [], source: 'user' };
+  let activeField: 'front' | 'back' = 'front';
   let query = '';
-  let refreshTimer = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   el.innerHTML = `<div aria-busy="true">
     <div class="skeleton" style="width:180px;height:14px;margin-bottom:16px"></div>
@@ -63,7 +66,7 @@ export async function mount(el, ctx) {
     );
   }
 
-  function sourceLabel(card) {
+  function sourceLabel(card: CardDto): string {
     return { ai: 'AI', user: 'You', import: 'Imported' }[card.source] || 'You';
   }
 
@@ -224,7 +227,7 @@ export async function mount(el, ctx) {
       )
       .join('');
     listEl.querySelectorAll('.card-list__front').forEach((node) => renderMath(node));
-    listEl.querySelectorAll('[data-id]').forEach((btn) => {
+    listEl.querySelectorAll<HTMLElement>('[data-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const card = cards.find((c) => String(c.id) === btn.dataset.id);
         if (card) selectCard(card);
@@ -235,8 +238,9 @@ export async function mount(el, ctx) {
   function bindShell() {
     el.querySelector('#rename-deck')?.addEventListener('click', openRenameDeck);
     el.querySelector('#delete-deck')?.addEventListener('click', openDeleteDeck);
-    el.querySelector('#card-search')?.addEventListener('input', (e) => {
-      query = e.target.value;
+    el.querySelector('#card-search')?.addEventListener('input', (e: Event) => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement) query = target.value;
       renderList();
     });
     el.querySelector('#new-card')?.addEventListener('click', () => {
@@ -246,7 +250,7 @@ export async function mount(el, ctx) {
         saved = { front: '', back: '', tags: [], source: 'user' };
         renderList();
         loadIntoEditor();
-        el.querySelector('#card-front')?.focus();
+        el.querySelector<HTMLElement>('#card-front')?.focus();
       });
     });
     el.querySelector('#save-card')?.addEventListener('click', save);
@@ -265,9 +269,10 @@ export async function mount(el, ctx) {
     });
     el.querySelector('#delete-card')?.addEventListener('click', removeCard);
 
-    const front = el.querySelector('#card-front');
-    const back = el.querySelector('#card-back');
-    const tagField = el.querySelector('#tag-field');
+    const front = el.querySelector<HTMLTextAreaElement>('#card-front');
+    const back = el.querySelector<HTMLTextAreaElement>('#card-back');
+    const tagField = el.querySelector<HTMLInputElement>('#tag-field');
+    if (!front || !back || !tagField) return;
 
     front.addEventListener('input', () => {
       draft.front = front.value;
@@ -286,14 +291,16 @@ export async function mount(el, ctx) {
       activeField = 'back';
     });
 
-    el.querySelectorAll('.tex-btn').forEach((btn) => {
+    el.querySelectorAll<HTMLButtonElement>('.tex-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const ta = activeField === 'back' ? back : front;
-        insertSnippet(ta, btn.dataset.snippet, btn.dataset.caret);
+        const snippet = btn.dataset.snippet;
+        if (snippet === undefined) return;
+        insertSnippet(ta, snippet, btn.dataset.caret);
       });
     });
 
-    tagField.addEventListener('keydown', (e) => {
+    tagField.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ',') {
         e.preventDefault();
         addTag(tagField.value);
@@ -311,15 +318,18 @@ export async function mount(el, ctx) {
       }
     });
 
-    el.querySelector('#tag-input')?.addEventListener('click', (e) => {
-      if (e.target.closest('[data-remove-tag]')) {
-        const tag = e.target.closest('[data-remove-tag]').dataset.removeTag;
+    el.querySelector('#tag-input')?.addEventListener('click', (e: Event) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const removeBtn = target.closest<HTMLElement>('[data-remove-tag]');
+      if (removeBtn) {
+        const tag = removeBtn.dataset.removeTag;
         draft.tags = draft.tags.filter((t) => t !== tag);
         renderTags();
         updateDirtyUi();
         return;
       }
-      if (e.target.id === 'tag-input') tagField.focus();
+      if (target.id === 'tag-input') tagField.focus();
     });
 
     schedulePreview();
@@ -329,6 +339,7 @@ export async function mount(el, ctx) {
 
   function openRenameDeck() {
     if (!deck) return;
+    const currentDeck = deck;
     dialog({
       title: 'Rename deck',
       body: `
@@ -341,25 +352,27 @@ export async function mount(el, ctx) {
         { label: 'Save name', value: 'rename', variant: 'btn--filled' },
       ],
       onMount(root) {
-        const input = root.querySelector('#deck-rename-name');
+        const input = root.querySelector<HTMLInputElement>('#deck-rename-name');
+        if (!input) return;
         input?.focus();
         input?.select();
-        root.addEventListener('submit', async (e) => {
-          if (e.submitter?.value !== 'rename') return;
+        root.addEventListener('submit', async (e: SubmitEvent) => {
+          const submitter = e.submitter;
+          if (!(submitter instanceof HTMLButtonElement) || submitter.value !== 'rename') return;
           const name = input.value.trim();
           if (!name) {
             toast('Give the deck a name first', { type: 'error' });
             return;
           }
-          if (name === deck.name) return;
+          if (name === currentDeck.name) return;
           try {
             await ctx.api.updateDeck(deckId, { name });
-            deck.name = name;
+            currentDeck.name = name;
             const title = el.querySelector('.page-title');
             if (title) title.textContent = name;
             toast(`Deck renamed to “${name}”`);
           } catch (err) {
-            toast(err.message || 'Could not rename the deck', { type: 'error' });
+            toast(errorMessage(err, 'Could not rename the deck'), { type: 'error' });
           }
         });
       },
@@ -368,6 +381,7 @@ export async function mount(el, ctx) {
 
   function openDeleteDeck() {
     if (!deck) return;
+    const currentDeck = deck;
     const linked = linkedQuizzes.length;
     dialog({
       title: 'Delete deck',
@@ -392,12 +406,13 @@ export async function mount(el, ctx) {
         { label: 'Delete deck', value: 'delete', variant: 'btn--filled', danger: true },
       ],
       onMount(root) {
-        const input = root.querySelector('#deck-delete-name');
-        const keep = root.querySelector('#keep-quizzes');
+        const input = root.querySelector<HTMLInputElement>('#deck-delete-name');
+        const keep = root.querySelector<HTMLInputElement>('#keep-quizzes');
         const hint = root.querySelector('#delete-deck-hint');
-        const submit = root.querySelector('button[value="delete"]');
+        const submit = root.querySelector<HTMLButtonElement>('button[value="delete"]');
+        if (!input) return;
         const update = () => {
-          if (submit) submit.disabled = input.value.trim() !== deck.name;
+          if (submit) submit.disabled = input.value.trim() !== currentDeck.name;
           if (keep && hint)
             hint.textContent = keep.checked
               ? 'The linked quiz stays in your library without a deck.'
@@ -407,14 +422,15 @@ export async function mount(el, ctx) {
         keep?.addEventListener('change', update);
         update();
         input.focus();
-        root.addEventListener('submit', async (e) => {
-          if (e.submitter?.value !== 'delete' || input.value.trim() !== deck.name) return;
+        root.addEventListener('submit', async (e: SubmitEvent) => {
+          const submitter = e.submitter;
+          if (!(submitter instanceof HTMLButtonElement) || submitter.value !== 'delete' || input.value.trim() !== currentDeck.name) return;
           try {
-            await ctx.api.deleteDeck(deckId, deck.name, keep ? !keep.checked : false);
-            toast(`Deck “${deck.name}” deleted`);
+            await ctx.api.deleteDeck(deckId, currentDeck.name, keep ? !keep.checked : false);
+            toast(`Deck “${currentDeck.name}” deleted`);
             ctx.go('#/');
           } catch (err) {
-            toast(err.message || 'Could not delete the deck', { type: 'error' });
+            toast(errorMessage(err, 'Could not delete the deck'), { type: 'error' });
           }
         });
       },
@@ -436,7 +452,7 @@ export async function mount(el, ctx) {
     });
   }
 
-  function addTag(raw) {
+  function addTag(raw: string) {
     const tag = String(raw).trim().replace(/,$/, '').slice(0, 40);
     if (!tag) return;
     if (draft.tags.length >= 10) {
@@ -449,7 +465,11 @@ export async function mount(el, ctx) {
     updateDirtyUi();
   }
 
-  function insertSnippet(ta, snippet, caret) {
+  function insertSnippet(
+    ta: HTMLTextAreaElement | null,
+    snippet: string,
+    caret: string | number | null | undefined,
+  ) {
     if (!ta) return;
     const start = ta.selectionStart ?? ta.value.length;
     const end = ta.selectionEnd ?? start;
@@ -488,9 +508,9 @@ export async function mount(el, ctx) {
     const front = draft.front.length;
     const back = draft.back.length;
     const total = front + back;
-    const fc = el.querySelector('#front-count');
-    const bc = el.querySelector('#back-count');
-    const tc = el.querySelector('#char-total');
+    const fc = el.querySelector<HTMLElement>('#front-count');
+    const bc = el.querySelector<HTMLElement>('#back-count');
+    const tc = el.querySelector<HTMLElement>('#char-total');
     if (fc) {
       fc.textContent = `${front} / 4000`;
       fc.dataset.state = front > 4000 ? 'over' : 'ok';
@@ -509,22 +529,24 @@ export async function mount(el, ctx) {
     const isDirty = dirty();
     const state = el.querySelector('#save-state');
     if (state) state.textContent = isDirty ? 'Unsaved changes' : 'Saved';
-    const discard = el.querySelector('#discard');
+    const discard = el.querySelector<HTMLButtonElement>('#discard');
     if (discard) discard.hidden = !isDirty;
-    const save = el.querySelector('#save-card');
+    const save = el.querySelector<HTMLButtonElement>('#save-card');
     if (save) save.disabled = !isDirty || !draft.front.trim() || !draft.back.trim();
   }
 
   function loadIntoEditor() {
-    if (!el.querySelector('#card-front')) return;
-    el.querySelector('#card-front').value = draft.front;
-    el.querySelector('#card-back').value = draft.back;
-    el.querySelector('#card-front').disabled = false;
-    el.querySelector('#card-back').disabled = false;
+    const front = el.querySelector<HTMLTextAreaElement>('#card-front');
+    const back = el.querySelector<HTMLTextAreaElement>('#card-back');
+    if (!front || !back) return;
+    front.value = draft.front;
+    back.value = draft.back;
+    front.disabled = false;
+    back.disabled = false;
 
     const title = el.querySelector('#editor-title');
     const meta = el.querySelector('#editor-meta');
-    const del = el.querySelector('#delete-card');
+    const del = el.querySelector<HTMLElement>('#delete-card');
     if (title) title.textContent = selectedId ? `Card ${selectedId}` : 'New card';
     if (meta) {
       meta.innerHTML = selectedId
@@ -539,7 +561,7 @@ export async function mount(el, ctx) {
     renderTags();
   }
 
-  function selectCard(card, { force = false } = {}) {
+  function selectCard(card: CardDto | undefined, { force = false }: { force?: boolean } = {}) {
     if (!card) return;
     const go = () => {
       selectedId = card.id;
@@ -552,7 +574,7 @@ export async function mount(el, ctx) {
     else maybeDiscard(go);
   }
 
-  function maybeDiscard(next) {
+  function maybeDiscard(next: () => void) {
     if (!dirty()) {
       next();
       return;
@@ -565,7 +587,7 @@ export async function mount(el, ctx) {
         { label: 'Discard', value: 'discard', variant: 'btn--filled', danger: true },
       ],
       onMount(root) {
-        root.querySelectorAll('.btn').forEach((btn) => {
+        root.querySelectorAll<HTMLButtonElement>('.btn').forEach((btn) => {
           btn.addEventListener('click', () => {
             if (btn.value === 'discard') next();
           });
@@ -581,10 +603,10 @@ export async function mount(el, ctx) {
     }
     if (!draft.front.trim() || !draft.back.trim()) {
       toast('Both sides of the card are required', { type: 'error' });
-      (draft.front.trim() ? el.querySelector('#card-back') : el.querySelector('#card-front'))?.focus();
+      (draft.front.trim() ? el.querySelector<HTMLElement>('#card-back') : el.querySelector<HTMLElement>('#card-front'))?.focus();
       return;
     }
-    const saveBtn = el.querySelector('#save-card');
+    const saveBtn = el.querySelector<HTMLButtonElement>('#save-card');
     if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving…';
@@ -621,9 +643,9 @@ export async function mount(el, ctx) {
       renderList();
       loadIntoEditor();
     } catch (err) {
-      toast(err.message || 'Could not save the card', { type: 'error' });
+      toast(errorMessage(err, 'Could not save the card'), { type: 'error' });
     } finally {
-      const btn = el.querySelector('#save-card');
+      const btn = el.querySelector<HTMLButtonElement>('#save-card');
       if (btn) {
         btn.disabled = !dirty();
         btn.innerHTML = `${icon('check')}Save card`;
@@ -651,7 +673,7 @@ export async function mount(el, ctx) {
       await refreshSummary();
       toast('Card deleted');
     } catch (err) {
-      toast(err.message || 'Could not delete the card', { type: 'error' });
+      toast(errorMessage(err, 'Could not delete the card'), { type: 'error' });
     }
   }
 
@@ -716,7 +738,7 @@ export async function mount(el, ctx) {
     el.innerHTML = `<div class="empty" style="margin-top:12vh">
       <div class="empty__icon">${icon('cancel')}</div>
       <h2 class="empty__title">This deck didn’t load</h2>
-      <p class="empty__body">${esc(err.message || 'The local server did not answer.')}</p>
+      <p class="empty__body">${esc(errorMessage(err, 'The local server did not answer.'))}</p>
       <a class="btn btn--tonal" href="#/">Back home</a>
     </div>`;
     return () => {
@@ -727,13 +749,13 @@ export async function mount(el, ctx) {
   const off = ctx.onChange((changes) => {
     const relevant = changes.some((c) => c.entity === 'card' || c.entity === 'deck');
     if (!relevant) return;
-    clearTimeout(refreshTimer);
+    if (refreshTimer !== null) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(refreshFromLive, 450);
   });
 
   return () => {
     disposed = true;
-    clearTimeout(refreshTimer);
+    if (refreshTimer !== null) clearTimeout(refreshTimer);
     off();
   };
 }

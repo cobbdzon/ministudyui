@@ -5,9 +5,9 @@ import { dirname, join } from 'node:path';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-
-
 let db: Database | null = null;
+
+export interface RunResult { changes: number; lastInsertRowid: number }
 
 export function open(path: string): Database {
   db = new Database(path);
@@ -42,8 +42,18 @@ export function tx<T>(fn: () => T): T {
   catch (e) { db!.exec('ROLLBACK'); throw e; }
 }
 
-export function run(sql: string, params: SQLQueryBindings[] = []): Changes { return db!.prepare(sql).run(...params); }
-export function get(sql: string, params: SQLQueryBindings[] = []): any { return db!.prepare(sql).get(...params); }
-export function all(sql: string, params: SQLQueryBindings[] = []): any[] { return db!.prepare(sql).all(...params); }
+export function run(sql: string, params: SQLQueryBindings[] = []): RunResult {
+  const r: Changes = db!.prepare(sql).run(...params);
+  return { changes: r.changes, lastInsertRowid: Number(r.lastInsertRowid ?? 0) };
+}
+export function get<T>(sql: string, params: SQLQueryBindings[] = []): T | null {
+  return (db!.prepare(sql).get(...params) as T | undefined) ?? null;
+}
+export function all<T>(sql: string, params: SQLQueryBindings[] = []): T[] {
+  return db!.prepare(sql).all(...params) as T[];
+}
+export function count(sql: string, params: SQLQueryBindings[] = []): number {
+  return Number(get<{ n: number }>(sql, params)?.n ?? 0);
+}
 
 export function close(): void { if (db) { db.close(); db = null; } }

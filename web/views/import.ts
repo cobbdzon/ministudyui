@@ -1,17 +1,20 @@
+import { errorMessage } from '../api.js';
+import type { AppContext } from '../context.js';
 import { icon } from '../icons.js';
-import { escapeHtml as esc } from '../math.js';
-import { dialog, toast } from '../ui.js';
 import { IMPORT_PROMPT } from '../import-prompt.js';
+import { escapeHtml as esc } from '../math.js';
+import type { Bundle } from '../../shared/types.js';
+import { dialog, toast } from '../ui.js';
 
 // Assistants often wrap their answer in a fenced code block even when asked
 // not to, so accept both raw JSON and a single fenced json block.
-function stripFences(text) {
+function stripFences(text: string): string {
   const trimmed = text.trim();
   const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return (match ? match[1] : trimmed).trim();
 }
 
-async function copyPrompt() {
+async function copyPrompt(): Promise<void> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(IMPORT_PROMPT);
@@ -31,11 +34,11 @@ async function copyPrompt() {
   }
 }
 
-function count(n, word) {
+function count(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-export function openImport(ctx) {
+export function openImport(ctx: AppContext): void {
   dialog({
     title: 'Import from an AI assistant',
     wide: true,
@@ -61,27 +64,28 @@ export function openImport(ctx) {
         </div>
       </div>`,
     actions: [{ label: 'Close', value: 'close', variant: 'btn--tonal' }],
-    onMount(root, close) {
-      const input = root.querySelector('#import-json');
-      const hint = root.querySelector('#import-hint');
-      const button = root.querySelector('#import-run');
+    onMount(root: HTMLElement, close: (value: string) => void) {
+      const input = root.querySelector<HTMLTextAreaElement>('#import-json');
+      const hint = root.querySelector<HTMLElement>('#import-hint');
+      const button = root.querySelector<HTMLButtonElement>('#import-run');
+      if (!input || !hint || !button) return;
 
       root.querySelector('#import-copy')?.addEventListener('click', copyPrompt);
       requestAnimationFrame(() => input?.focus());
 
-      const fail = (message) => {
+      const fail = (message: string): void => {
         hint.textContent = message;
         hint.classList.add('import-hint--error');
       };
 
-      const run = async () => {
+      const run = async (): Promise<void> => {
         const raw = input.value.trim();
         if (!raw) return fail('Paste the JSON first.');
-        let bundle;
+        let bundle: Bundle;
         try {
-          bundle = JSON.parse(stripFences(raw));
+          bundle = JSON.parse(stripFences(raw)) as Bundle;
         } catch (e) {
-          return fail(`That is not valid JSON: ${e.message}`);
+          return fail(`That is not valid JSON: ${errorMessage(e)}`);
         }
         hint.classList.remove('import-hint--error');
         hint.textContent = 'Importing…';
@@ -89,7 +93,7 @@ export function openImport(ctx) {
         button.setAttribute('aria-busy', 'true');
         try {
           const result = await ctx.api.importBundle(bundle);
-          const parts = [];
+          const parts: string[] = [];
           if (result.decks_created) parts.push(count(result.decks_created, 'deck'));
           if (result.decks_reused) parts.push(`${count(result.decks_reused, 'deck')} reused`);
           if (result.cards_added) parts.push(count(result.cards_added, 'card'));
@@ -102,7 +106,7 @@ export function openImport(ctx) {
             detail: [{ entity: 'deck', op: 'insert' }, { entity: 'card', op: 'insert' }, { entity: 'quiz', op: 'insert' }],
           }));
         } catch (err) {
-          fail(err?.message || 'Could not import the JSON.');
+          fail(errorMessage(err, 'Could not import the JSON.'));
         } finally {
           button.disabled = false;
           button.removeAttribute('aria-busy');
@@ -110,7 +114,7 @@ export function openImport(ctx) {
       };
 
       button?.addEventListener('click', run);
-      input?.addEventListener('keydown', (e) => {
+      input?.addEventListener('keydown', (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
           run();

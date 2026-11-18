@@ -1,9 +1,11 @@
+import type { Rating, SrsPreview, SrsResult, SrsState } from '../../../shared/types.js';
+
 const Q = [0, 3, 4, 5];
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso);
   d.setTime(d.getTime() + days * 86400000);
-  return d.toISOString().replace(/\.\d{3}Z$/, (m) => m) ; // keep ms
+  return d.toISOString();
 }
 
 function fmt(days: number): string {
@@ -12,17 +14,22 @@ function fmt(days: number): string {
   return Math.round(days) + 'd';
 }
 
-export function schedule(state: any, rating: number, now?: string): any {
-  now = now || new Date().toISOString();
-  const s = { ease: state.ease ?? 2.5, interval_days: state.interval_days ?? 0, reps: state.reps ?? 0, lapses: state.lapses ?? 0 };
+export function schedule(state: SrsState, rating: Rating, now?: string): SrsResult {
+  const at = now || new Date().toISOString();
+  const s = {
+    ease: state.ease ?? 2.5,
+    interval_days: state.interval_days ?? 0,
+    reps: state.reps ?? 0,
+    lapses: state.lapses ?? 0,
+  };
   if (rating === 0) {
     return {
       ease: Math.max(1.3, s.ease - 0.2),
       interval_days: 0,
       reps: 0,
       lapses: s.reps > 0 ? s.lapses + 1 : s.lapses,
-      due_at: new Date(new Date(now).getTime() + 10 * 60000).toISOString(),
-      last_reviewed_at: now,
+      due_at: new Date(new Date(at).getTime() + 10 * 60000).toISOString(),
+      last_reviewed_at: at,
     };
   }
   const q = Q[rating];
@@ -38,18 +45,18 @@ export function schedule(state: any, rating: number, now?: string): any {
     interval_days: interval,
     reps: s.reps + 1,
     lapses: s.lapses,
-    due_at: addDays(now, interval),
-    last_reviewed_at: now,
+    due_at: addDays(at, interval),
+    last_reviewed_at: at,
   };
 }
 
-export function preview(state: any, now?: string): any {
-  now = now || new Date().toISOString();
-  const res: any = {};
-  const labels = ['again', 'hard', 'good', 'easy'];
+export function preview(state: SrsState, now?: string): SrsPreview {
+  const at = now || new Date().toISOString();
+  const res: Partial<SrsPreview> = {};
+  const labels = ['again', 'hard', 'good', 'easy'] as const;
   for (let r = 0; r < 4; r++) {
-    const ns = schedule(state, r, now);
-    res[labels[r]] = (r === 0) ? '10m' : fmt(ns.interval_days);
+    const ns = schedule(state, r as Rating, at);
+    res[labels[r]] = r === 0 ? '10m' : fmt(ns.interval_days);
   }
-  return res;
+  return res as SrsPreview;
 }

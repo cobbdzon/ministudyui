@@ -1,184 +1,178 @@
-// The only data interface the UI knows. api.mock.js implements the same surface
+// The only data interface the UI knows. api.mock.ts implements the same Api
 // against in-memory fixtures so the app can be reviewed without a server.
+import { hc } from 'hono/client';
+import type { AppType } from '../src/http/app.js';
+import type {
+  AnswerRow, ApiErrorBody, AttemptRow, AttemptStart, AttemptStatus, AttemptSummary,
+  Bundle, CardDto, CardInput, CardPatchInput, CardRow, ChangeEvent, DeckCreateInput, DeckRef,
+  DeckSummary, DeckUpdateInput, ImportResult, OkResponse, PendingAnswerDto, QuizQuestionDto,
+  QuizRow, QuizSummary, Rating, ReviewCardDto, Source, StatsDto,
+} from '../shared/types.js';
 
 const useMock = new URLSearchParams(location.search).has('mock');
+export const rpc = hc<AppType>('/');
 
-async function req(path, opts = {}) {
-  const headers = opts.body ? { 'Content-Type': 'application/json' } : {};
-  const res = await fetch(path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
+export class ApiError extends Error {
+  constructor(readonly status: number, readonly body: ApiErrorBody) {
+    super(body.message || `Request failed (${status})`);
+    this.name = 'ApiError';
   }
-  if (!res.ok) {
-    const err = new Error(data?.message || `Request failed (${res.status})`);
-    Object.assign(err, data || {});
-    throw err;
-  }
-  return data;
 }
 
-function normalizeCard(c) {
-  if (!c) return c;
-  let tags = c.tags;
+// hc methods return a Promise<ClientResponse>. Infer the payload from json()
+// (ClientResponse.ok is boolean, not an `ok: true` literal on most handlers).
+export async function unwrap<T>(
+  res: Promise<{ ok: boolean; status: number; json(): Promise<T> }>,
+): Promise<T> {
+  const response = await res;
+  if (response.ok) return response.json();
+  let raw: unknown = null;
+  try { raw = await response.json(); } catch { /* body may be empty */ }
+  const b = (raw && typeof raw === 'object' ? raw : {}) as Partial<ApiErrorBody>;
+  throw new ApiError(response.status, {
+    code: String(b.code ?? 'ERROR'),
+    message: String(b.message ?? `Request failed (${response.status})`),
+    field: b.field,
+    hint: b.hint,
+  });
+}
+
+export function errorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+  }
+  return fallback;
+}
+
+function normalizeCard(c: CardRow & { tags?: unknown }): CardDto {
+  let tags: unknown = c.tags;
   if (!Array.isArray(tags)) {
-    try {
-      tags = JSON.parse(c.tags_json || '[]');
-    } catch {
-      tags = [];
-    }
+    try { tags = JSON.parse(c.tags_json || '[]'); } catch { tags = []; }
   }
-  return { ...c, tags };
+  return {
+    id: c.id, deck_id: c.deck_id, front: c.front, back: c.back,
+    tags: tags as string[], source: c.source, created_at: c.created_at, updated_at: c.updated_at,
+  };
 }
 
-const real = {
-  req,
+export interface Api {
+  decks(): Promise<{ decks: DeckSummary[] }>;
+  createDeck(input: DeckCreateInput): Promise<{ ok: true; deck: { id: number; name: string; description: string } }>;
+  deleteDeck(id: DeckRef, confirmName: string, deleteQuizzes?: boolean): Promise<OkResponse>;
+  updateDeck(id: DeckRef, patch: DeckUpdateInput): Promise<{ ok: true; deck: { id: number; name: string; description: string } }>;
+  cards(opts?: {
+    deck?: DeckRef; q?: string; tag?: string; source?: Source; limit?: number; offset?: number;
+  }): Promise<{ cards: CardDto[]; total: number }>;
+  addCards(deck: DeckRef, cards: CardInput[]): Promise<{ card_ids: number[] }>;
+  importBundle(bundle: Bundle): Promise<ImportResult>;
+  updateCard(id: number, patch: CardPatchInput): Promise<OkResponse>;
+  deleteCards(ids: number[]): Promise<OkResponse>;
+  reviewQueue(deck: DeckRef, limit?: number): Promise<{ cards: ReviewCardDto[] }>;
+  review(cardId: number, rating: Rating): Promise<{ ok: true; review_id: number }>;
+  undo(): Promise<{ ok: true; card_id: number }>;
+  quizzes(deck?: DeckRef): Promise<{ quizzes: QuizSummary[] }>;
+  quiz(id: number, opts?: { includeAnswers?: boolean }): Promise<{ quiz: QuizRow; questions: QuizQuestionDto[] }>;
+  deleteQuiz(id: number, confirmTitle: string, deleteDeck?: boolean): Promise<OkResponse>;
+  attempts(opts?: { status?: AttemptStatus; quizId?: number; limit?: number }): Promise<{ attempts: AttemptRow[] }>;
+  attempt(id: number): Promise<{ attempt: AttemptRow; answers: AnswerRow[] }>;
+  startAttempt(quizId: number): Promise<{ attempt: AttemptStart }>;
+  restartAttempt(quizId: number): Promise<{ attempt: AttemptStart }>;
+  answerAttempt(attemptId: number, questionId: number, response: unknown): Promise<{ ok: true; answer_id: number }>;
+  submitAttempt(id: number): Promise<{ ok: true; attempt: AttemptSummary }>;
+  pending(limit?: number): Promise<{ answers: PendingAnswerDto[] }>;
+  grade(answerId: number, points: number, feedback: string): Promise<{ ok: true; answer: { id: number }; attempt: AttemptSummary }>;
+  stats(deck?: DeckRef): Promise<StatsDto>;
+  subscribe(cb: (change: ChangeEvent) => void): () => void;
+}
 
-  decks() {
-    return req('/api/decks');
-  },
-  createDeck({ name, description }) {
-    return req('/api/decks', {
-      method: 'POST',
-      body: JSON.stringify({ name, description: description || '' }),
-    });
-  },
-  deleteDeck(id, confirmName, deleteQuizzes = false) {
-    return req(`/api/decks/${id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ confirm_name: confirmName, delete_quizzes: deleteQuizzes }),
-    });
-  },
-  updateDeck(id, patch) {
-    return req(`/api/decks/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    });
-  },
+const real: Api = {
+  decks: () => unwrap(rpc.api.decks.$get()),
+  createDeck: (input) => unwrap(rpc.api.decks.$post({
+    json: { name: input.name, description: input.description ?? '' },
+  })),
+  deleteDeck: (id, confirmName, deleteQuizzes = false) => unwrap(rpc.api.decks[':id'].$delete({
+    param: { id: String(id) },
+    json: { confirm_name: confirmName, delete_quizzes: deleteQuizzes },
+  })),
+  updateDeck: (id, patch) => unwrap(rpc.api.decks[':id'].$patch({
+    param: { id: String(id) }, json: patch,
+  })),
 
-  async cards({ deck, q, tag, source, limit = 100, offset = 0 } = {}) {
-    const params = new URLSearchParams();
-    if (deck !== undefined && deck !== null) params.set('deck', deck);
-    if (q) params.set('q', q);
-    if (tag) params.set('tag', tag);
-    if (source) params.set('source', source);
-    params.set('limit', limit);
-    params.set('offset', offset);
-    const data = await req(`/api/cards?${params}`);
-    return { ...data, cards: (data.cards || []).map(normalizeCard) };
+  async cards(opts = {}) {
+    const query: Record<string, string> = {};
+    if (opts.deck !== undefined && opts.deck !== null) query.deck = String(opts.deck);
+    if (opts.q) query.q = opts.q;
+    if (opts.tag) query.tag = opts.tag;
+    if (opts.source) query.source = opts.source;
+    query.limit = String(opts.limit ?? 100);
+    query.offset = String(opts.offset ?? 0);
+    const data = await unwrap(rpc.api.cards.$get({ query }));
+    return { ...data, cards: data.cards.map(normalizeCard) };
   },
-  async addCards(deck, cards) {
-    const data = await req('/api/cards', {
-      method: 'POST',
-      body: JSON.stringify({ deck, cards }),
-    });
-    return data;
-  },
-  importBundle(bundle) {
-    return req('/api/import', {
-      method: 'POST',
-      body: JSON.stringify(bundle),
-    });
-  },
-  updateCard(id, patch) {
-    return req(`/api/cards/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
-  },
-  deleteCards(ids) {
-    return req('/api/cards', { method: 'DELETE', body: JSON.stringify({ card_ids: ids }) });
-  },
+  addCards: (deck, cards) => unwrap(rpc.api.cards.$post({ json: { deck, cards } })),
+  importBundle: (bundle) => unwrap(rpc.api.import.$post({ json: bundle })),
+  updateCard: (id, patch) => unwrap(rpc.api.cards[':id'].$patch({
+    param: { id: String(id) }, json: patch,
+  })),
+  deleteCards: (ids) => unwrap(rpc.api.cards.$delete({ json: { card_ids: ids } })),
 
-  reviewQueue(deck, limit = 10) {
-    const params = new URLSearchParams({ deck: String(deck ?? ''), limit: String(limit) });
-    return req(`/api/review/queue?${params}`);
-  },
-  review(cardId, rating) {
-    return req('/api/review', {
-      method: 'POST',
-      body: JSON.stringify({ card_id: cardId, rating }),
-    });
-  },
-  undo() {
-    return req('/api/review/undo', { method: 'POST' });
-  },
+  reviewQueue: (deck, limit = 10) => unwrap(rpc.api.review.queue.$get({
+    query: { deck: String(deck ?? ''), limit: String(limit) },
+  })),
+  review: (cardId, rating) => unwrap(rpc.api.review.$post({ json: { card_id: cardId, rating } })),
+  undo: () => unwrap(rpc.api.review.undo.$post()),
 
-  quizzes(deck) {
-    const suffix = deck !== undefined && deck !== null ? `?deck=${encodeURIComponent(deck)}` : '';
-    return req(`/api/quizzes${suffix}`);
-  },
-  quiz(id, { includeAnswers = true } = {}) {
-    return req(`/api/quizzes/${id}?include_answers=${includeAnswers}`);
-  },
-  deleteQuiz(id, confirmTitle, deleteDeck = false) {
-    return req(`/api/quizzes/${id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ confirm_title: confirmTitle, delete_deck: deleteDeck }),
-    });
-  },
+  quizzes: (deck) => unwrap(rpc.api.quizzes.$get({
+    query: deck === undefined || deck === null ? {} : { deck: String(deck) },
+  })),
+  quiz: (id, opts = {}) => unwrap(rpc.api.quizzes[':id'].$get({
+    param: { id: String(id) }, query: { include_answers: String(opts.includeAnswers ?? true) },
+  })),
+  deleteQuiz: (id, confirmTitle, deleteDeck = false) => unwrap(rpc.api.quizzes[':id'].$delete({
+    param: { id: String(id) }, json: { confirm_title: confirmTitle, delete_deck: deleteDeck },
+  })),
 
-  attempts({ status, quizId, limit = 20 } = {}) {
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (quizId) params.set('quiz_id', String(quizId));
-    params.set('limit', String(limit));
-    return req(`/api/attempts?${params}`);
+  attempts: (opts = {}) => {
+    const query: Record<string, string> = {};
+    if (opts.status) query.status = opts.status;
+    if (opts.quizId) query.quiz_id = String(opts.quizId);
+    query.limit = String(opts.limit ?? 20);
+    return unwrap(rpc.api.attempts.$get({ query }));
   },
-  attempt(id) {
-    return req(`/api/attempts/${id}`);
-  },
+  attempt: (id) => unwrap(rpc.api.attempts[':id'].$get({ param: { id: String(id) } })),
   async startAttempt(quizId) {
-    const data = await req('/api/attempts', {
-      method: 'POST',
-      body: JSON.stringify({ quiz_id: quizId }),
-    });
-    return data.attempt ? data : { attempt: data };
+    return { attempt: await unwrap(rpc.api.attempts.$post({ json: { quiz_id: quizId } })) };
   },
   async restartAttempt(quizId) {
-    const data = await req('/api/attempts/restart', {
-      method: 'POST',
-      body: JSON.stringify({ quiz_id: quizId }),
-    });
-    return data.attempt ? data : { attempt: data };
+    return { attempt: await unwrap(rpc.api.attempts.restart.$post({ json: { quiz_id: quizId } })) };
   },
-  answerAttempt(attemptId, questionId, response) {
-    return req(`/api/attempts/${attemptId}/answers/${questionId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ response }),
-    });
-  },
-  submitAttempt(id) {
-    return req(`/api/attempts/${id}/submit`, { method: 'POST' });
-  },
+  answerAttempt: (attemptId, questionId, response) => unwrap(
+    rpc.api.attempts[':id'].answers[':qid'].$patch({
+      param: { id: String(attemptId), qid: String(questionId) }, json: { response },
+    }),
+  ),
+  submitAttempt: (id) => unwrap(rpc.api.attempts[':id'].submit.$post({ param: { id: String(id) } })),
 
-  pending(limit = 20) {
-    return req(`/api/grading/pending?limit=${limit}`);
-  },
-  grade(answerId, points, feedback) {
-    return req(`/api/grading/${answerId}`, {
-      method: 'POST',
-      body: JSON.stringify({ points, feedback }),
-    });
-  },
+  pending: (limit = 20) => unwrap(rpc.api.grading.pending.$get({ query: { limit: String(limit) } })),
+  grade: (answerId, points, feedback) => unwrap(rpc.api.grading[':id'].$post({
+    param: { id: String(answerId) }, json: { points, feedback },
+  })),
 
-  stats(deck) {
-    const suffix = deck !== undefined && deck !== null ? `?deck=${encodeURIComponent(deck)}` : '';
-    return req(`/api/stats${suffix}`);
-  },
+  stats: (deck) => unwrap(rpc.api.stats.$get({
+    query: deck !== undefined ? { deck: String(deck) } : {},
+  })),
 
   subscribe(cb) {
     if (typeof EventSource === 'undefined') return () => {};
     const es = new EventSource('/api/events');
-    const handler = (e) => {
-      try {
-        cb(JSON.parse(e.data));
-      } catch {
-        /* ignore malformed frames */
-      }
+    const handler = (e: MessageEvent<string>) => {
+      try { cb(JSON.parse(e.data) as ChangeEvent); } catch { /* ignore malformed frames */ }
     };
     es.addEventListener('change', handler);
     return () => es.close();
   },
 };
 
-export const api = useMock ? (await import('./api.mock.js')).default : real;
+export const api: Api = useMock ? ((await import('./api.mock.js')).default as Api) : real;

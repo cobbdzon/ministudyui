@@ -1,17 +1,44 @@
-// In-memory fixtures with the same interface as api.js's real adapter.
+// In-memory fixtures with the same interface as api.ts's real adapter.
 // Math-heavy content doubles as the KaTeX rendering regression fixture.
+import type { Api } from './api.js';
+import type {
+  AnswerRow, AttemptStatus, CardDto, Choice, DeckRef, DeckSummary, GradeResult,
+  PendingAnswerDto, QuestionAnswer, QuestionType, QuizQuestionDto,
+  QuizSummary, ReviewCardDto, Source, StatsDto,
+} from '../shared/types.js';
+
+interface DeckFixture { id: number; name: string; description: string; created_at: string }
+interface CardFixture {
+  id: number; deck_id: number; front: string; back: string;
+  tags: string[]; source: Source; reps: number; due: boolean;
+}
+interface QuizFixture {
+  id: number; deck_id: number | null; title: string;
+  description: string; source: Source; created_at: string;
+}
+interface QuestionFixture {
+  id: number; quiz_id: number; position: number; type: QuestionType;
+  prompt: string; choices?: Choice[]; answer?: QuestionAnswer;
+  points: number; explanation: string;
+}
+interface AttemptFixture {
+  id: number; quiz_id: number; started_at: string; submitted_at: string | null;
+  status: AttemptStatus; score: number | null; max_score: number;
+}
+interface AnswerFixture extends AnswerRow {}
+interface LastReview { card: CardFixture; wasDue: boolean; reps: number }
 
 const NOW = Date.now();
-const iso = (daysAgo = 0, minutesAgo = 0) =>
+const iso = (daysAgo = 0, minutesAgo = 0): string =>
   new Date(NOW - daysAgo * 86400000 - minutesAgo * 60000).toISOString();
-const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
-const fail = (message) => {
-  const e = new Error(message);
+const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
+const fail: (message: string) => never = (message) => {
+  const e = new Error(message) as Error & { code: string };
   e.code = 'VALIDATION';
   throw e;
 };
 
-const decks = [
+const decks: DeckFixture[] = [
   {
     id: 1,
     name: 'Calculus II',
@@ -33,7 +60,7 @@ const decks = [
 ];
 
 // due: whether the card appears in today's queue. reps drives new/mature.
-const cards = [
+const cards: CardFixture[] = [
   {
     id: 1,
     deck_id: 1,
@@ -236,7 +263,7 @@ const cards = [
   },
 ];
 
-const quizzes = [
+const quizzes: QuizFixture[] = [
   {
     id: 1,
     deck_id: 1,
@@ -255,7 +282,7 @@ const quizzes = [
   },
 ];
 
-const questions = [
+const questions: QuestionFixture[] = [
   {
     id: 1,
     quiz_id: 1,
@@ -350,8 +377,8 @@ const questions = [
   },
 ];
 
-const answers = [];
-const attempts = [
+const answers: AnswerFixture[] = [];
+const attempts: AttemptFixture[] = [
   {
     id: 1,
     quiz_id: 1,
@@ -390,7 +417,10 @@ const attempts = [
   },
 ];
 
-function addAnswer(attemptId, questionId, response, grading, gradedBy, feedback = '') {
+function addAnswer(
+  attemptId: number, questionId: number, response: string,
+  grading: number | null, gradedBy: 'auto' | 'ai' | 'manual' | null, feedback = '',
+): number {
   const id = answers.length + 1;
   answers.push({
     id,
@@ -399,7 +429,7 @@ function addAnswer(attemptId, questionId, response, grading, gradedBy, feedback 
     response,
     grading_status: gradedBy ? 'graded' : 'pending',
     is_correct: grading,
-    points_awarded: gradedBy ? grading === 1 ? questions.find((q) => q.id === questionId).points : 0 : null,
+    points_awarded: gradedBy ? grading === 1 ? (questions.find((q) => q.id === questionId)?.points ?? 0) : 0 : null,
     feedback,
     graded_by: gradedBy,
     graded_at: gradedBy ? iso(3) : null,
@@ -435,13 +465,13 @@ const reviewsPerDay = reviewSeries.map((n, i) => ({
   n,
 }));
 
-let lastReview = null;
+let lastReview: LastReview | null = null;
 let nextDeckId = 4;
 let nextCardId = 21;
 let nextQuizId = 3;
 let nextQuestionId = 8;
 
-function summaries() {
+function summaries(): DeckSummary[] {
   return decks.map((d) => {
     const own = cards.filter((c) => c.deck_id === d.id);
     return {
@@ -455,7 +485,7 @@ function summaries() {
   });
 }
 
-function removeQuiz(id) {
+function removeQuiz(id: number): void {
   const idx = quizzes.findIndex((q) => q.id === id);
   if (idx < 0) return;
   quizzes.splice(idx, 1);
@@ -467,13 +497,13 @@ function removeQuiz(id) {
   }
 }
 
-function resolveDeck(ref) {
+function resolveDeck(ref: DeckRef): DeckFixture {
   const deck = typeof ref === 'number' ? decks.find((d) => d.id === ref) : decks.find((d) => d.name.toLowerCase() === String(ref).toLowerCase());
   if (!deck) throw new Error('deck not found');
   return deck;
 }
 
-function withPreview(card) {
+function withPreview(card: CardFixture): ReviewCardDto {
   return {
     id: card.id,
     front: card.front,
@@ -489,7 +519,7 @@ function withPreview(card) {
   };
 }
 
-function publicCard(card) {
+function publicCard(card: CardFixture): CardDto {
   return {
     id: card.id,
     deck_id: card.deck_id,
@@ -502,21 +532,21 @@ function publicCard(card) {
   };
 }
 
-function autoGrade(q, response) {
+function autoGrade(q: QuestionFixture, response: string): GradeResult {
   const ans = q.answer || {};
   if (q.type === 'mcq') {
     const ok = String(response).trim() === String(ans.correct);
     return { status: 'graded', is_correct: ok ? 1 : 0, points: ok ? q.points : 0, feedback: ok ? 'Correct.' : 'Incorrect.' };
   }
   if (q.type === 'multi') {
-    let got = [];
+    let got: unknown[] = [];
     try {
       got = JSON.parse(response);
     } catch {
       got = [];
     }
-    const want = ans.correct || [];
-    const ok = got.length === want.length && got.every((x) => want.includes(x));
+    const want = (Array.isArray(ans.correct) ? ans.correct : []).map(String);
+    const ok = got.length === want.length && got.every((x) => want.includes(String(x)));
     return { status: 'graded', is_correct: ok ? 1 : 0, points: ok ? q.points : 0, feedback: ok ? 'Correct.' : 'Incorrect.' };
   }
   if (q.type === 'numeric') {
@@ -536,8 +566,9 @@ function autoGrade(q, response) {
   return { status: 'pending', is_correct: null, points: null, feedback: '' };
 }
 
-function recompute(attemptId) {
+function recompute(attemptId: number): AttemptFixture {
   const attempt = attempts.find((a) => a.id === attemptId);
+  if (!attempt) throw new Error('attempt not found');
   const rows = answers.filter((a) => a.attempt_id === attemptId);
   const pending = rows.filter((a) => a.grading_status === 'pending').length;
   attempt.score = rows.reduce((sum, a) => sum + (a.grading_status === 'graded' ? a.points_awarded || 0 : 0), 0);
@@ -545,7 +576,7 @@ function recompute(attemptId) {
   return attempt;
 }
 
-const api = {
+const api: Api = {
   decks() {
     return Promise.resolve({ decks: clone(summaries()) });
   },
@@ -559,7 +590,7 @@ const api = {
   },
 
   updateDeck(id, patch) {
-    const deck = resolveDeck(isNaN(id) ? id : Number(id));
+    const deck = resolveDeck(Number.isNaN(Number(id)) ? id : Number(id));
     if (patch.name !== undefined) {
       const name = String(patch.name).trim();
       if (!name) fail('name is required');
@@ -571,7 +602,7 @@ const api = {
   },
 
   deleteDeck(id, confirmName, deleteQuizzes = false) {
-    const deck = resolveDeck(isNaN(id) ? id : Number(id));
+    const deck = resolveDeck(Number.isNaN(Number(id)) ? id : Number(id));
     if (confirmName !== deck.name) fail('confirm_name mismatch');
     if (deleteQuizzes) {
       for (const q of [...quizzes]) if (q.deck_id === deck.id) removeQuiz(q.id);
@@ -586,14 +617,14 @@ const api = {
   cards({ deck } = {}) {
     let rows = cards;
     if (deck !== undefined && deck !== null && deck !== '') {
-      const d = resolveDeck(isNaN(deck) ? deck : Number(deck));
+      const d = resolveDeck(Number.isNaN(Number(deck)) ? deck : Number(deck));
       rows = rows.filter((c) => c.deck_id === d.id);
     }
     return Promise.resolve({ cards: clone(rows.map(publicCard)), total: rows.length });
   },
 
   addCards(deck, incoming) {
-    const d = resolveDeck(isNaN(deck) ? deck : Number(deck));
+    const d = resolveDeck(Number.isNaN(Number(deck)) ? deck : Number(deck));
     const ids = [];
     for (const c of incoming) {
       if (!c.front || !c.back) fail('front and back are required');
@@ -620,7 +651,7 @@ const api = {
     if (!Array.isArray(decksIn) || !Array.isArray(quizzesIn)) fail('decks and quizzes must be arrays');
     if (!decksIn.length && !quizzesIn.length) fail('nothing to import');
     const counts = {
-      ok: true, decks_created: 0, decks_reused: 0, cards_added: 0,
+      ok: true as const, decks_created: 0, decks_reused: 0, cards_added: 0,
       quizzes_created: 0, questions_added: 0,
     };
     const ids = new Map();
@@ -650,7 +681,7 @@ const api = {
       let deckId = null;
       if (q.deck !== undefined && q.deck !== null && q.deck !== '') {
         const key = String(q.deck).toLowerCase();
-        const found = ids.get(key) || (isNaN(q.deck)
+        const found = ids.get(key) || (Number.isNaN(Number(q.deck))
           ? decks.find((d) => d.name.toLowerCase() === key)
           : decks.find((d) => d.id === Number(q.deck)));
         if (!found) fail('deck not found: ' + q.deck);
@@ -663,7 +694,7 @@ const api = {
       }
       const quiz = {
         id: nextQuizId++, deck_id: deckId, title: q.title,
-        description: q.description || '', source: 'import', created_at: iso(0),
+        description: q.description || '', source: 'import' as Source, created_at: iso(0),
       };
       quizzes.push(quiz);
       counts.quizzes_created++;
@@ -708,7 +739,7 @@ const api = {
   },
 
   reviewQueue(deck, limit = 10) {
-    const d = resolveDeck(isNaN(deck) ? deck : Number(deck));
+    const d = resolveDeck(Number.isNaN(Number(deck)) ? deck : Number(deck));
     const rows = cards.filter((c) => c.deck_id === d.id && c.due).slice(0, limit);
     return Promise.resolve({ cards: clone(rows.map(withPreview)) });
   },
@@ -727,7 +758,7 @@ const api = {
     lastReview.card.due = lastReview.wasDue;
     lastReview.card.reps = lastReview.reps;
     lastReview = null;
-    return Promise.resolve({ ok: true });
+    return Promise.resolve({ ok: true, card_id: 0 });
   },
 
   quizzes(deck) {
@@ -750,17 +781,16 @@ const api = {
   quiz(id, { includeAnswers = true } = {}) {
     const quiz = quizzes.find((q) => String(q.id) === String(id));
     if (!quiz) fail('quiz not found');
-    const qs = questions
+    const qs: QuizQuestionDto[] = questions
       .filter((q) => q.quiz_id === quiz.id)
       .map((q) => {
-        const out = { ...clone(q), quiz_id: undefined };
-        delete out.quiz_id;
-        if (!includeAnswers) {
-          out.unit = q.answer?.unit ?? null;
-          delete out.answer;
-        } else if (q.type === 'numeric') {
-          out.unit = q.answer?.unit ?? null;
-        }
+        const out: QuizQuestionDto = {
+          id: q.id, position: q.position, type: q.type, prompt: q.prompt,
+          explanation: q.explanation, points: q.points,
+          ...(q.choices ? { choices: q.choices } : {}),
+        };
+        if (includeAnswers && q.answer) out.answer = q.answer;
+        if (!includeAnswers || q.type === 'numeric') out.unit = q.answer?.unit ?? null;
         return out;
       });
     return Promise.resolve({ quiz: clone(quiz), questions: qs });
@@ -808,7 +838,7 @@ const api = {
       quiz_id: quiz.id,
       started_at: iso(0),
       submitted_at: null,
-      status: 'in_progress',
+      status: 'in_progress' as const,
       score: null,
       max_score: max,
     };
@@ -843,6 +873,12 @@ const api = {
         attempt_id: attempt.id,
         question_id: q.id,
         response: value,
+        grading_status: 'pending',
+        is_correct: null,
+        points_awarded: null,
+        feedback: '',
+        graded_by: null,
+        graded_at: null,
       };
       answers.push(row);
     }
@@ -876,6 +912,7 @@ const api = {
       .slice(0, limit)
       .map((a) => {
         const q = questions.find((x) => x.id === a.question_id);
+        if (!q) throw new Error('question not found');
         return {
           answer_id: a.id,
           attempt_id: a.attempt_id,
@@ -894,8 +931,10 @@ const api = {
     const row = answers.find((a) => a.id === Number(answerId));
     if (!row) fail('answer not found');
     const q = questions.find((x) => x.id === row.question_id);
+    if (!q) fail('question not found');
     if (points < 0 || points > q.points) fail('points out of range');
     const attempt = attempts.find((a) => a.id === row.attempt_id);
+    if (!attempt) fail('attempt not found');
     Object.assign(row, {
       grading_status: 'graded',
       is_correct: points >= q.points ? 1 : points > 0 ? null : 0,
