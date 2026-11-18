@@ -28,6 +28,24 @@ test('srs again does not increase interval and ordering holds', () => {
   assert.ok(n(p.good) <= n(p.easy));
 });
 
+test('srs preview gives distinct, accurate intervals for a new card', () => {
+  const now = new Date().toISOString();
+  const fresh = { ease: 2.5, interval_days: 0, reps: 0, lapses: 0 };
+  const preview = srs.preview(fresh, now);
+  assert.deepEqual(preview, { again: '10m', hard: '1d', good: '3d', easy: '7d' });
+
+  const ratings = [
+    { rating: 1 as const, label: 'hard' as const },
+    { rating: 2 as const, label: 'good' as const },
+    { rating: 3 as const, label: 'easy' as const },
+  ];
+  for (const { rating, label } of ratings) {
+    const result = srs.schedule(fresh, rating, now);
+    const days = Math.round((new Date(result.due_at).getTime() - new Date(now).getTime()) / 86400000);
+    assert.equal(preview[label], `${days}d`);
+  }
+});
+
 test('grader numeric tolerance', () => {
   const q = { type: 'numeric' as const, answer_json: { value: 9.81, tolerance: 0.01, tolerance_type: 'abs' as const, unit: null }, points: 1 };
   assert.equal(gradeAuto(q, '9.81').is_correct, 1);

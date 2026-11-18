@@ -33,12 +33,17 @@ export function schedule(state: SrsState, rating: Rating, now?: string): SrsResu
     };
   }
   const q = Q[rating];
-  let interval;
-  if (s.reps === 0) interval = 1;
-  else if (s.reps === 1) interval = 6;
-  else interval = Math.round(s.interval_days * s.ease);
-  if (rating === 1) interval = Math.max(1, Math.round(interval * 0.8));
-  if (rating === 3) interval = Math.round(interval * 1.3);
+  let interval: number;
+  if (s.reps === 0) {
+    // A single 1-day base rounds hard/good/easy to the same value, so the
+    // rating buttons all read "1d". Give a new card a distinct first interval
+    // per passing rating; the ease adjustment below still applies.
+    interval = rating === 1 ? 1 : rating === 2 ? 3 : 7;
+  } else {
+    interval = s.reps === 1 ? 6 : Math.round(s.interval_days * s.ease);
+    if (rating === 1) interval = Math.max(1, Math.round(interval * 0.8));
+    if (rating === 3) interval = Math.round(interval * 1.3);
+  }
   const ef = Math.max(1.3, s.ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
   return {
     ease: ef,

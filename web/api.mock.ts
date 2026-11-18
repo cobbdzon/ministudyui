@@ -514,7 +514,7 @@ function withPreview(card: CardFixture): ReviewCardDto {
     source: card.source,
     preview:
       card.reps === 0
-        ? { again: '10m', hard: '1d', good: '1d', easy: '1d' }
+        ? { again: '10m', hard: '1d', good: '3d', easy: '7d' }
         : card.reps < 3
           ? { again: '10m', hard: '2d', good: '4d', easy: '6d' }
           : { again: '10m', hard: '12d', good: '20d', easy: '30d' },
