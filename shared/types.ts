@@ -8,6 +8,7 @@ export type {
   LatexInput, PendingQuery, QuizCreateInput, QuizDeleteInput, QuizGetQuery,
   QuizIdInput, QuizListQuery, ReviewInput, ReviewQueueQuery, StatsQuery,
   GradeInput, AnswerInput, QuestionsBodyInput, QuestionInput, AttemptListQuery,
+  UiContextInput,
 } from './schemas.js';
 
 // ---- primitives ----
@@ -110,6 +111,38 @@ export interface ImportResult {
   quizzes_created: number; questions_added: number;
 }
 export interface ChangeEvent { entity: string; id: number; op: string }
+
+// ---- current UI context (shared with the MCP server through SQLite) ----
+export interface UiContext {
+  view: 'review' | 'quiz' | null;
+  deck_id: number | null;
+  card_id: number | null;
+  flipped: boolean;
+  quiz_id: number | null;
+  attempt_id: number | null;
+  question_id: number | null;
+  question_position: number | null;
+  updated_at: string | null;
+}
+export interface CurrentContextQuestion {
+  id: number; quiz_id: number; position: number; type: QuestionType;
+  prompt: string; choices: Choice[] | null; answer: QuestionAnswer | null;
+  explanation: string; points: number;
+}
+export interface CurrentContextResult {
+  context: UiContext | null;
+  card: {
+    id: number; deck_id: number; front: string; back: string;
+    tags: string[]; source: Source;
+  } | null;
+  question: CurrentContextQuestion | null;
+  deck: { id: number; name: string } | null;
+  quiz: { id: number; title: string } | null;
+  your_answer: {
+    response: string; grading_status: GradingStatus; is_correct: number | null;
+    points_awarded: number | null; feedback: string;
+  } | null;
+}
 
 // ---- error envelopes ----
 export interface ApiErrorBody { code: string; message: string; field?: string; hint?: string }

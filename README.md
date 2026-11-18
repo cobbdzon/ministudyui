@@ -112,7 +112,15 @@ The server speaks MCP over stdio and stores data in the same SQLite file
 (default `data/ministudy.db`, overridable with `DB_PATH`). It exposes tools
 such as `deck_create`, `deck_list`, `deck_update`, `card_add`,
 `card_search`, `quiz_create`, `study_next_due`, `study_stats`, `attempt_list`,
-`attempts_pending_grading`, `answer_grade`, and `latex_validate`.
+`attempts_pending_grading`, `answer_grade`, `latex_validate`, and
+`current_context`.
+
+`current_context` reports the card or quiz question currently on screen in the
+web UI, with its full content and answer (and the user's saved answer for a
+quiz question). The web app writes this to a single shared SQLite row as you
+review or move between questions, and clears it on other screens — both
+processes use the same database file, so an LLM can ask about what you are
+looking at without any extra bridge.
 
 ## Running with OpenCode
 

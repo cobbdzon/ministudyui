@@ -29,6 +29,22 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   let decks: DeckSummary[] = [];
   let mode: 'overview' | 'run' = 'overview';
   let run: QuizRun | null = null;
+
+  // Reported to SQLite so MCP tools can answer about the question on screen.
+  function reportContext(q: QuizQuestionDto | null): void {
+    const id = Number(quizId);
+    void ctx.api.setUiContext({
+      view: 'quiz',
+      quiz_id: Number.isFinite(id) && id > 0 ? id : null,
+      deck_id: quiz?.deck_id ?? null,
+      attempt_id: run?.attempt?.id ?? null,
+      question_id: q?.id ?? null,
+      question_position: q && run ? run.index + 1 : null,
+    }).catch(() => {});
+  }
+  function clearContext(): void {
+    void ctx.api.setUiContext({ view: null }).catch(() => {});
+  }
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const previewMath = debounce(() => {
@@ -61,6 +77,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     attempts = attemptsRes.status === 'fulfilled' ? attemptsRes.value.attempts || [] : [];
     decks = decksRes.status === 'fulfilled' ? decksRes.value.decks || [] : [];
     mode = 'overview';
+    clearContext();
     renderOverview();
   }
 
@@ -376,6 +393,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const q = currentQuestion();
     if (!q) return;
     if (!run) return;
+    reportContext(q);
     const currentRun = run;
     const total = questions.length;
     const i = run.index;
@@ -660,6 +678,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
 
   return () => {
     disposed = true;
+    clearContext();
     document.removeEventListener('keydown', onKey);
     clearTimeout(refreshTimer ?? undefined);
     off();

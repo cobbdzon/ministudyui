@@ -7,6 +7,7 @@ import * as library from '../boxes/library/index.js';
 import * as study from '../boxes/study/index.js';
 import * as attempts from '../boxes/attempts/index.js';
 import * as latex from '../boxes/latex/index.js';
+import * as context from '../boxes/context/index.js';
 import { asAppError } from '../boxes/errors.js';
 
 store.open(process.env.DB_PATH || new URL('../../data/ministudy.db', import.meta.url).pathname);
@@ -148,6 +149,10 @@ server.registerTool('attempt_list', { description: 'List attempts', inputSchema:
 server.registerTool('attempts_pending_grading', { description: 'Pending grading', inputSchema: PendingInput }, wrap((a: PendingArgs) => ({ answers: attempts.pending(a) })));
 server.registerTool('answer_grade', { description: 'Grade an answer', inputSchema: GradeInput }, wrap((a: GradeArgs) => attempts.gradeAnswer({ answerId: a.answer_id, points: a.points, feedback: a.feedback })));
 server.registerTool('latex_validate', { description: 'Validate LaTeX', inputSchema: LatexInput }, wrap((a: LatexArgs) => ({ results: latex.validate(a.sources) })));
+server.registerTool('current_context', {
+  description: 'What the user is currently viewing in the web UI: the flashcard in review or the quiz question on screen, with its full content, answer and their own saved answer. Use this to answer questions about the current card/question. context is null when nothing is in focus.',
+  inputSchema: z.object({}),
+}, wrap(() => context.current()));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

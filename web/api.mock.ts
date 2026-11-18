@@ -4,7 +4,7 @@ import type { Api } from './api.js';
 import type {
   AnswerRow, AttemptStatus, CardDto, Choice, DeckRef, DeckSummary, GradeResult,
   PendingAnswerDto, QuestionAnswer, QuestionType, QuizQuestionDto,
-  QuizSummary, ReviewCardDto, Source, StatsDto,
+  QuizSummary, ReviewCardDto, Source, StatsDto, UiContext, UiContextInput,
 } from '../shared/types.js';
 
 interface DeckFixture { id: number; name: string; description: string; created_at: string }
@@ -584,6 +584,8 @@ function recompute(attemptId: number): AttemptFixture {
   return attempt;
 }
 
+let mockUiContext: UiContext | null = null;
+
 const api: Api = {
   decks() {
     return Promise.resolve({ decks: clone(summaries()) });
@@ -986,6 +988,19 @@ const api: Api = {
         { tag: 'kinematics', cards: 1, lapses: 0.8 },
       ],
     });
+  },
+
+  uiContext() {
+    return Promise.resolve({ context: mockUiContext });
+  },
+  setUiContext(input: UiContextInput) {
+    mockUiContext = {
+      view: input.view, deck_id: input.deck_id ?? null, card_id: input.card_id ?? null,
+      flipped: input.flipped ?? false, quiz_id: input.quiz_id ?? null,
+      attempt_id: input.attempt_id ?? null, question_id: input.question_id ?? null,
+      question_position: input.question_position ?? null, updated_at: new Date().toISOString(),
+    };
+    return Promise.resolve({ ok: true as const, context: mockUiContext });
   },
 
   subscribe() {

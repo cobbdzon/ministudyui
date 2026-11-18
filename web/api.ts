@@ -7,6 +7,7 @@ import type {
   Bundle, CardDto, CardInput, CardPatchInput, CardRow, CardScheduleInput, ChangeEvent, DeckCreateInput, DeckRef,
   DeckSummary, DeckUpdateInput, ImportResult, OkResponse, PendingAnswerDto, QuizQuestionDto,
   QuizRow, QuizSummary, Rating, ReviewCardDto, Source, StatsDto,
+  UiContext, UiContextInput,
 } from '../shared/types.js';
 
 const useMock = new URLSearchParams(location.search).has('mock');
@@ -87,6 +88,8 @@ export interface Api {
   pending(limit?: number): Promise<{ answers: PendingAnswerDto[] }>;
   grade(answerId: number, points: number, feedback: string): Promise<{ ok: true; answer: { id: number }; attempt: AttemptSummary }>;
   stats(deck?: DeckRef): Promise<StatsDto>;
+  uiContext(): Promise<{ context: UiContext | null }>;
+  setUiContext(context: UiContextInput): Promise<{ ok: true; context: UiContext }>;
   subscribe(cb: (change: ChangeEvent) => void): () => void;
 }
 
@@ -169,6 +172,9 @@ const real: Api = {
   stats: (deck) => unwrap(rpc.api.stats.$get({
     query: deck !== undefined ? { deck: String(deck) } : {},
   })),
+
+  uiContext: () => unwrap(rpc.api.ui.context.$get()),
+  setUiContext: (context) => unwrap(rpc.api.ui.context.$put({ json: context })),
 
   subscribe(cb) {
     if (typeof EventSource === 'undefined') return () => {};

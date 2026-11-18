@@ -43,6 +43,22 @@ export function migrate(): void {
     }
     db!.exec('PRAGMA user_version = 3');
   }
+  if (v < 4) {
+    // Fresh databases already have the table from schema.sql.
+    db!.exec(`CREATE TABLE IF NOT EXISTS ui_context (
+      id                INTEGER PRIMARY KEY CHECK (id = 1),
+      view              TEXT CHECK (view IN ('review','quiz') OR view IS NULL),
+      deck_id           INTEGER REFERENCES decks(id) ON DELETE SET NULL,
+      card_id           INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+      flipped           INTEGER NOT NULL DEFAULT 0 CHECK (flipped IN (0,1)),
+      quiz_id           INTEGER REFERENCES quizzes(id) ON DELETE SET NULL,
+      attempt_id        INTEGER REFERENCES attempts(id) ON DELETE SET NULL,
+      question_id       INTEGER REFERENCES questions(id) ON DELETE SET NULL,
+      question_position INTEGER CHECK (question_position IS NULL OR question_position >= 1),
+      updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`);
+    db!.exec('PRAGMA user_version = 4');
+  }
 }
 
 export function tx<T>(fn: () => T): T {

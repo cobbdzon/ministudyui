@@ -33,6 +33,18 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   let startedAt = Date.now();
   let disposed = false;
 
+  // Let the MCP server know which card is on screen so an LLM can answer
+  // questions about it. Reporting is best-effort and never blocks studying.
+  function reportContext(cardId: number | null): void {
+    const id = Number(deckId);
+    void ctx.api.setUiContext({
+      view: 'review',
+      deck_id: Number.isFinite(id) && id > 0 ? id : null,
+      card_id: cardId,
+      flipped,
+    }).catch(() => {});
+  }
+
   el.innerHTML = `<div class="review-shell">
     <header class="review-bar">
       <button class="icon-btn" id="exit" aria-label="Leave review">${icon('close')}</button>
@@ -157,6 +169,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
 
   function render(): void {
     updateProgress();
+    reportContext(cards[0]?.id ?? null);
     if (!cards.length) {
       stage.innerHTML = reviewed ? doneState() : caughtUpState();
       bindDone();
@@ -200,6 +213,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const card = cards[0];
     if (!card) return;
     flipped = true;
+    reportContext(card.id);
     stage.querySelector('#study-card')?.setAttribute('data-flipped', 'true');
     const slot = stage.querySelector('#controls-slot');
     if (slot) {

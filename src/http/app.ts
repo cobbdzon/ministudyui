@@ -8,6 +8,7 @@ import * as study from '../boxes/study/index.js';
 import * as attempts from '../boxes/attempts/index.js';
 import * as changefeed from '../boxes/changefeed/index.js';
 import * as latex from '../boxes/latex/index.js';
+import * as context from '../boxes/context/index.js';
 import { serveStatic } from './static.js';
 import { v } from './validate.js';
 import type { AttemptRow, AnswerRow, DeckRef } from '../../shared/types.js';
@@ -195,6 +196,10 @@ const routes = app
   // 28 — latex validate
   .post('/api/latex/validate', v('json', S.LatexSchema), (c) =>
     c.json({ results: latex.validate(c.req.valid('json').sources) }))
+  // 29 — the card/question currently on screen (read by the MCP server)
+  .get('/api/ui/context', (c) => c.json({ context: context.read() }))
+  .put('/api/ui/context', v('json', S.UiContextSchema), (c) =>
+    c.json({ ok: true as const, context: context.write(c.req.valid('json')) }))
   // fall-throughs
   .get('/api/*', (c) => c.json({ code: 'NOT_FOUND', message: 'route not found' }, 404))
   .get('*', (c) => serveStatic(c));

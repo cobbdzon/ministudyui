@@ -291,6 +291,11 @@ async function route(): Promise<void> {
   try {
     const unmount = await view.mount(main, { ...ctx, params, viewId });
     cleanup = typeof unmount === 'function' ? unmount : null;
+    // Review and quiz report their own current card/question; every other
+    // screen means there is nothing in focus for an MCP tool to look at.
+    if (viewId !== 'review' && viewId !== 'quiz') {
+      void ctx.api.setUiContext({ view: null }).catch(() => {});
+    }
   } catch (err) {
     console.error(err);
     document.body.classList.remove('focus-mode');

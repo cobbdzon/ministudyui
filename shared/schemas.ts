@@ -131,6 +131,17 @@ export const GradeBodySchema = z.looseObject({
 export const LatexSchema = z.looseObject({
   sources: z.array(z.string().max(4000)).max(50).optional().default([]),
 });
+// Missing fields mean "not applicable" and reset that slot. view:null clears it.
+export const UiContextSchema = z.looseObject({
+  view: z.enum(['review', 'quiz']).nullable(),
+  deck_id: z.number().int().min(1).nullable().optional(),
+  card_id: z.number().int().min(1).nullable().optional(),
+  flipped: z.boolean().optional(),
+  quiz_id: z.number().int().min(1).nullable().optional(),
+  attempt_id: z.number().int().min(1).nullable().optional(),
+  question_id: z.number().int().min(1).nullable().optional(),
+  question_position: z.number().int().min(1).nullable().optional(),
+});
 
 // ---- query schemas ----
 export const CardQuerySchema = z.object({
@@ -163,6 +174,7 @@ export type QuizIdInput = z.infer<typeof QuizIdBodySchema>;
 export type AnswerInput = z.infer<typeof AnswerBodySchema>;
 export type GradeInput = z.infer<typeof GradeBodySchema>;
 export type LatexInput = z.infer<typeof LatexSchema>;
+export type UiContextInput = z.infer<typeof UiContextSchema>;
 export type CardQuery = z.infer<typeof CardQuerySchema>;
 export type ReviewQueueQuery = z.infer<typeof ReviewQueueQuerySchema>;
 export type QuizListQuery = z.infer<typeof QuizListQuerySchema>;
