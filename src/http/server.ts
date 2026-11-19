@@ -13,6 +13,7 @@ export interface StartOptions {
   hostname?: string;
   idleTimeout?: number;
   serveDist?: boolean;
+  token?: string;
 }
 
 // Programmatic entry point used by the HTTP server and the desktop shell.
@@ -23,7 +24,7 @@ export function start(options: StartOptions = {}) {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   store.open(dbPath);
   store.migrate();
-  configureHttp({ port });
+  configureHttp({ port, token: options.token });
   configureStatic({ dist: options.serveDist ?? process.env.MINISTUDY_DIST === '1' });
 
   const server = Bun.serve({

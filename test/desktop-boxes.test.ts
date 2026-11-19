@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPaths } from '../desktop/boxes/paths/index.js';
 import { createServerHost, type StartInput } from '../desktop/boxes/server-host/index.js';
+import { windowPolicy } from '../desktop/boxes/window/index.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -35,5 +36,15 @@ describe('desktop boxes', () => {
     expect(server.url).toBe('http://127.0.0.1:43210');
     server.stop();
     expect(stopped).toBe(true);
+  });
+
+  it('window policy blocks all navigation except our origin and disables RPC', () => {
+    const policy = windowPolicy({ url: 'http://127.0.0.1:43210/', token: 'secret' });
+    expect(policy.url).toBe('http://127.0.0.1:43210/?token=secret');
+    expect(policy.sandbox).toBe(true);
+    expect(JSON.parse(policy.navigationRules)).toEqual([
+      '^*',
+      'http://127.0.0.1:43210/*',
+    ]);
   });
 });

@@ -28,6 +28,9 @@ export interface HttpSecurityConfig {
   // Keep this as strict as the original guard: no wildcards, no remote hosts.
   hosts?: string[];
   origins?: string[];
+  // When set, every /api/* request must carry this per-launch token (header
+  // x-ministudy-token, or ?token= for EventSource which cannot set headers).
+  token?: string;
 }
 
 let security: HttpSecurityConfig = {};
@@ -48,6 +51,13 @@ app.use('*', async (c, next) => {
   const origin = c.req.header('origin');
   if (origin && !origins.includes(origin)) {
     return c.json({ code: 'FORBIDDEN', message: 'bad host/origin' }, 403);
+  }
+  if (security.token && c.req.path.startsWith('/api/')) {
+    const provided = c.req.header('x-ministudy-token')
+      ?? new URL(c.req.url).searchParams.get('token') ?? '';
+    if (provided !== security.token) {
+      return c.json({ code: 'FORBIDDEN', message: 'bad api token' }, 403);
+    }
   }
   await next();
 });

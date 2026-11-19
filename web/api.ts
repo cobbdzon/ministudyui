@@ -20,12 +20,18 @@ function normalizeBase(url: string): string {
   if (!trimmed || trimmed === '/') return '/';
   return trimmed.replace(/\/+$/, '');
 }
+// The desktop shell generates a per-launch token and passes it in the URL.
+// Ordinary web usage has no token and the server does not require one.
+const token = params.get('token') ?? '';
+const authHeaders: Record<string, string> = token ? { 'x-ministudy-token': token } : {};
+const client = (url: string) => hc<AppType>(url, { headers: authHeaders });
+
 let baseUrl = normalizeBase(params.get('apiBase') ?? '/');
 export const getApiBaseUrl = (): string => baseUrl;
-export let rpc = hc<AppType>(baseUrl);
+export let rpc = client(baseUrl);
 export function setApiBaseUrl(url: string): void {
   baseUrl = normalizeBase(url);
-  rpc = hc<AppType>(baseUrl);
+  rpc = client(baseUrl);
 }
 
 export class ApiError extends Error {
@@ -201,7 +207,9 @@ const real: Api = {
 
   subscribe(cb) {
     if (typeof EventSource === 'undefined') return () => {};
-    const es = new EventSource(`${baseUrl === '/' ? '' : baseUrl}/api/events`);
+    const events = new URL(`${baseUrl === '/' ? '' : baseUrl}/api/events`, location.href);
+    if (token) events.searchParams.set('token', token);
+    const es = new EventSource(events.toString());
     const handler = (e: MessageEvent<string>) => {
       try { cb(JSON.parse(e.data) as ChangeEvent); } catch { /* ignore malformed frames */ }
     };
