@@ -45,6 +45,25 @@ describe('runtime http configuration', () => {
     expect(res.status).toBe(200);
   });
 
+  it('returns a generated MCP config for the same DB', async () => {
+    configureHttp({
+      port: 3101,
+      token: 'secret',
+      dbPath: '/tmp/ministudy.db',
+      mcpScript: '/tmp/mcp/stdio.js',
+    });
+    const res = await app.request('/api/mcp/config', {
+      headers: { host: '127.0.0.1:3101', 'x-ministudy-token': 'secret' },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as {
+      dbPath: string;
+      config: { mcpServers: Record<string, { env: Record<string, string> }> };
+    };
+    expect(data.dbPath).toBe('/tmp/ministudy.db');
+    expect(data.config.mcpServers.ministudyui.env.DB_PATH).toBe('/tmp/ministudy.db');
+  });
+
   it('accepts an explicit loopback host/origin set', async () => {
     configureHttp({ port: 3101, hosts: ['[::1]:3101'], origins: ['http://[::1]:3101'] });
     const ok = await app.request('/api/stats', {

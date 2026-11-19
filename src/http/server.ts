@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as store from '../boxes/store/index.js';
 import { app, configureHttp } from './app.js';
-import { configureStatic } from './static.js';
+import { assetRoot, configureStatic } from './static.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -24,7 +24,12 @@ export function start(options: StartOptions = {}) {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   store.open(dbPath);
   store.migrate();
-  configureHttp({ port, token: options.token });
+  configureHttp({
+    port,
+    token: options.token,
+    dbPath,
+    mcpScript: path.join(assetRoot(), 'dist', 'mcp', 'stdio.js'),
+  });
   configureStatic({ dist: options.serveDist ?? process.env.MINISTUDY_DIST === '1' });
 
   const server = Bun.serve({

@@ -184,3 +184,10 @@ Main process: desktop/main.ts (composition root). Bundled view: desktop/views/ma
 - `hutch electrobun config`      print the normalized build config
 Desktop has its own tsconfig (desktop/tsconfig.json) extending .hutch/devkit/tsconfig.json;
 root `bun run typecheck` does not cover desktop/. `bun run dev` (web) is unchanged.
+
+### MCP in the packaged desktop app
+The desktop build ships a bundled stdio MCP server at `dist/mcp/stdio.js` (plus `schema.sql` beside it).
+The running app exposes `GET /api/mcp/config` (requires the per-launch token) which returns the exact
+`dbPath`, the bundled script path, and a ready MCP client config using the app's bundled Bun binary
+with `DB_PATH` set to that file. Phase 2's "copy MCP config" button will surface this; never hand-write
+a config with a different DB path. See decisions.md "Packaged MCP exposure (T14)".

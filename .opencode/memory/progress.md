@@ -13,7 +13,11 @@ Task format: Files / Done when / Don't. One task per session. Commit per green t
 - [x] T11: desktop/boxes/paths + server-host: start the HTTP app in-process on a free port, DB in user-data dir. Done when: window shows the real app with data persisting across restarts.
 - [x] T12: security baseline: navigation locked to our origin, no remote content with native RPC access, per-launch API token, minimal RPC surface.
 - [ ] T13: packaged build runs on this OS and one other (record findings in gotchas.md, especially Linux WebKitGTK rendering). BLOCKED: Linux verified (build + launch + WebKitGTK screenshot OK); Windows/macOS need native runners — Hutch does not cross-compile.
-- [ ] T14: decide and implement how a packaged install exposes MCP on the same DB (see Open questions in decisions.md); write the decision first, then the task breakdown.
+- [x] T14: decide and implement how a packaged install exposes MCP on the same DB (see Open questions in decisions.md); write the decision first, then the task breakdown.
+  - [x] T14.1 bundle src/mcp/stdio.ts in the electrobun preBuild hook.
+  - [x] T14.2 copy the MCP bundle + schema.sql into the app bundle.
+  - [x] T14.3 add GET /api/mcp/config (token-guarded) with tests.
+  - [x] T14.4 document the generated config in AGENTS.md.
 ## Phase 2: native features (each a box + platform.ts method + browser fallback)
 - [ ] tray + due-count badge, notifications, deep links (ministudy://review/3 sets the hash route), global shortcut, "copy MCP config" button.
 ## Phase 3: packaging, code signing/notarization, auto-update (read guides/code-signing.mdx, apis/updater.mdx first)

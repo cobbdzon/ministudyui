@@ -31,6 +31,8 @@ export interface HttpSecurityConfig {
   // When set, every /api/* request must carry this per-launch token (header
   // x-ministudy-token, or ?token= for EventSource which cannot set headers).
   token?: string;
+  dbPath?: string;
+  mcpScript?: string;
 }
 
 let security: HttpSecurityConfig = {};
@@ -237,6 +239,21 @@ const routes = app
   .get('/api/ui/context', (c) => c.json({ context: context.read() }))
   .put('/api/ui/context', v('json', S.UiContextSchema), (c) =>
     c.json({ ok: true as const, context: context.write(c.req.valid('json')) }))
+  // 30 — generated MCP client config for a packaged/desktop install
+  .get('/api/mcp/config', (c) => c.json({
+    dbPath: security.dbPath ?? '',
+    mcpScript: security.mcpScript ?? '',
+    config: {
+      mcpServers: {
+        ministudyui: {
+          type: 'local',
+          command: process.execPath,
+          args: [security.mcpScript ?? ''],
+          env: { DB_PATH: security.dbPath ?? '' },
+        },
+      },
+    },
+  }))
   // fall-throughs
   .get('/api/*', (c) => c.json({ code: 'NOT_FOUND', message: 'route not found' }, 404))
   .get('*', (c) => serveStatic(c));

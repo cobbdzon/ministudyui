@@ -25,6 +25,7 @@ export default {
       "src/boxes/store/schema.sql": "bun/schema.sql",
       // Self-contained web UI (TS + vendor deps bundled, no node_modules).
       "dist/web": "dist/web",
+      "dist/mcp": "dist/mcp",
     },
     mac: { bundleCEF: false },
     linux: { bundleCEF: false },
