@@ -1,0 +1,244 @@
+---
+title: "UI Components"
+description: "The eb-* component stylesheet: buttons, forms, cards, navigation, menus, dialogs, and more in plain CSS."
+---
+import { Aside } from "@astrojs/starlight/components";
+
+<Aside type="caution" title="Experimental">
+Electrobun UI is experimental. Class names and tokens may change between
+releases.
+</Aside>
+
+Electrobun UI ships a small design system as one plain CSS file. There are no
+component functions to import: components are HTML elements with `eb-*`
+classes, so they work with any markup, any framework, and identically in a
+webview. Enable it with `components: true`:
+
+```tsx
+createUIWindow({ title: "App", components: true }, () => <App />);
+// or: createUI(win, { components: true })
+```
+
+Wrap your app in `class="eb-app"` to get the base font, colors, and
+`box-sizing: border-box`.
+
+![Built-in Electrobun UI components in Kitchen Sink on macOS, including buttons, badges, cards, tabs, and a progress bar](../../assets/ui/components-macos.png)
+
+*The built-in component stylesheet in Kitchen Sink on macOS. The controls,
+text, gradients, shadows, and backdrop blur are rendered by Electrobun UI.*
+
+## Theming
+
+Everything is driven by `--eb-*` custom properties on `:root`. Override any of
+them in your own CSS:
+
+| Token | Purpose |
+| --- | --- |
+| `--eb-bg`, `--eb-surface`, `--eb-card` | Backgrounds |
+| `--eb-fg`, `--eb-muted`, `--eb-subtle` | Text colors |
+| `--eb-border`, `--eb-input` | Borders and input outlines |
+| `--eb-primary`, `--eb-primary-hover`, `--eb-primary-fg` | Primary actions |
+| `--eb-secondary`, `--eb-secondary-hover`, `--eb-accent`, `--eb-accent-fg` | Secondary surfaces, selection |
+| `--eb-danger`, `--eb-success`, `--eb-warning` (+ `-bg`) | Status colors |
+| `--eb-ring` | Focus ring |
+| `--eb-radius`, `--eb-radius-lg` | Corner radii |
+| `--eb-shadow-sm`, `--eb-shadow`, `--eb-shadow-lg` | Elevation |
+| `--eb-font`, `--eb-mono` | Font stacks |
+
+```css
+:root { --eb-primary: #e11d48; --eb-primary-hover: #be123c; --eb-radius: 6px; }
+```
+
+Dark tokens apply under `prefers-color-scheme: dark` (set with the `dark`
+option or `ui.setDark()`), or force a scheme on any subtree with
+`class="eb-dark"` / `class="eb-light"`.
+
+## Buttons
+
+```html
+<button class="eb-btn">Save</button>
+<button class="eb-btn secondary">Cancel</button>
+<button class="eb-btn outline">Outline</button>
+<button class="eb-btn ghost">Ghost</button>
+<button class="eb-btn danger">Delete</button>
+<button class="eb-btn link">Learn more</button>
+<button class="eb-btn sm">Small</button>
+<button class="eb-btn lg">Large</button>
+<button class="eb-btn icon" aria-label="Close">✕</button>
+```
+
+## Form controls
+
+```html
+<label class="eb-field">
+  <span class="eb-label">Email</span>
+  <input class="eb-input" type="email" placeholder="ada@example.com">
+  <span class="eb-hint">We never share it.</span>
+</label>
+
+<select class="eb-select"><option>Free</option><option>Pro</option></select>
+<textarea class="eb-textarea"></textarea>
+
+<label class="eb-check-row"><input class="eb-checkbox" type="checkbox"> I agree</label>
+<label class="eb-check-row"><input class="eb-radio" type="radio" name="r"> Monthly</label>
+
+<!-- switch: an input and an empty span inside the label -->
+<label class="eb-switch"><input type="checkbox"><span></span></label>
+
+<input class="eb-slider" type="range" min="0" max="100">
+```
+
+## Surfaces
+
+```html
+<div class="eb-card">
+  <div class="eb-card-header">
+    <h3 class="eb-card-title">Card</h3>
+    <p class="eb-card-desc">A short description.</p>
+  </div>
+  <div class="eb-card-body">Content</div>
+  <div class="eb-card-footer"><button class="eb-btn">OK</button></div>
+</div>
+
+<div class="eb-panel">Inset panel</div>
+<hr class="eb-separator">
+```
+
+## Badges, avatars, keys
+
+```html
+<span class="eb-badge">Default</span>
+<span class="eb-badge primary">New</span>
+<span class="eb-badge success">Done</span>
+<span class="eb-badge warning">Pending</span>
+<span class="eb-badge danger">Failed</span>
+<span class="eb-badge outline">Draft</span>
+
+<div class="eb-avatar-group">
+  <div class="eb-avatar">AL</div>
+  <div class="eb-avatar sm">GH</div>
+  <div class="eb-avatar lg"><img src="data:image/png;base64,..." alt="Ada"></div>
+</div>
+
+<kbd class="eb-kbd">⌘K</kbd>
+```
+
+## Feedback
+
+```html
+<div class="eb-alert success">
+  <div><div class="eb-alert-title">Saved</div>Your changes are live.</div>
+</div>
+<div class="eb-progress"><div style="width: 40%"></div></div>
+<div class="eb-spinner"></div>
+<div class="eb-skeleton" style="height: 14px; width: 120px"></div>
+
+<div class="eb-toasts">
+  <div class="eb-toast">Copied to clipboard</div>
+</div>
+```
+
+`.eb-alert` also has `warning` and `danger` variants. `.eb-toast` animates in
+when added; render toasts into `.eb-toasts` with a keyed `<For>`.
+
+## Navigation
+
+```html
+<div class="eb-tabs" role="tablist">
+  <button class="eb-tab" aria-selected="true">General</button>
+  <button class="eb-tab">Advanced</button>
+</div>
+
+<div class="eb-underline-tabs">
+  <button class="eb-tab active">Overview</button>
+  <button class="eb-tab">Activity</button>
+</div>
+
+<nav class="eb-nav">
+  <button class="eb-nav-item" aria-current="page">Inbox</button>
+  <button class="eb-nav-item">Archive</button>
+</nav>
+
+<div class="eb-breadcrumb"><span>Home</span><span>/</span><span>Settings</span></div>
+```
+
+The selected tab is `aria-selected="true"` or `.active`; the current nav item
+is `aria-current="page"` or `.active`.
+
+## Menus, popovers, tooltips
+
+```html
+<div class="eb-menu">
+  <div class="eb-menu-label">File</div>
+  <div class="eb-menu-item">New <kbd class="eb-kbd">⌘N</kbd></div>
+  <div class="eb-menu-item danger">Delete</div>
+</div>
+
+<div class="eb-tooltip-host">
+  <button class="eb-btn outline">Hover me</button>
+  <div class="eb-tooltip">Tooltips are pure CSS :hover</div>
+</div>
+```
+
+`.eb-popover` is an absolutely positioned wrapper whose child pops in; put it
+inside a `position: relative` parent and show it with `<Show>`.
+
+## Dialogs
+
+```html
+<div class="eb-overlay">
+  <div class="eb-dialog" role="dialog">
+    <div class="eb-dialog-header">
+      <h2 class="eb-dialog-title">Delete file?</h2>
+      <p class="eb-dialog-desc">This can't be undone.</p>
+    </div>
+    <div class="eb-dialog-body">...</div>
+    <div class="eb-dialog-footer">
+      <button class="eb-btn outline">Cancel</button>
+      <button class="eb-btn danger">Delete</button>
+    </div>
+  </div>
+</div>
+```
+
+The overlay blurs what's behind it with `backdrop-filter`. Render it inside a
+`<Show>` (optionally in a `<Portal>`) to open and close it.
+
+![A centered Electrobun UI dialog with Cancel and Confirm buttons over a blurred Kitchen Sink window on macOS](../../assets/ui/dialog-macos.png)
+
+*Kitchen Sink on macOS: a dialog rendered through a `Portal` over the blurred
+GPU-rendered interface.*
+
+## Disclosure
+
+```html
+<div class="eb-accordion">
+  <details open><summary>What is it?</summary><div>A GPU-rendered UI.</div></details>
+  <details><summary>Does it need a webview?</summary><div>No.</div></details>
+</div>
+```
+
+## Data
+
+```html
+<div class="eb-table">
+  <div class="eb-tr head"><div class="eb-td">Name</div><div class="eb-td">Status</div></div>
+  <div class="eb-tr"><div class="eb-td">build.zig</div><div class="eb-td">ok</div></div>
+</div>
+
+<div class="eb-list">
+  <div class="eb-list-item">First</div>
+  <div class="eb-list-item">Second</div>
+</div>
+```
+
+## Layout helpers
+
+| Class | Effect |
+| --- | --- |
+| `eb-row` | Horizontal flex, centered, 8px gap |
+| `eb-col` | Vertical flex, 8px gap |
+| `eb-grow` | `flex: 1; min-width: 0` |
+| `eb-scroll` | `overflow: auto` |
+| `eb-muted` | Muted text color |
+| `eb-title` | Large page title |

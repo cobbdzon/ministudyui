@@ -1,0 +1,198 @@
+---
+title: "Updater"
+description: "Check, download, apply, and observe Electrobun application updates."
+---
+import { Aside } from "@astrojs/starlight/components";
+
+Electrobun's Zig core owns update checks, downloads, preparation, and apply
+handoff for Bun, Cottontail, Zig, Rust, Go, and Odin. Bun and Cottontail keep
+the existing promise-based `Updater` API shown below. Native applications use
+the [typed request and polling API](/electrobun/apis/updater-native/), including
+an explicit application approval step before applying an update.
+
+Hutch stable and canary builds create update metadata plus a compressed full
+bundle. When a previous release is available, Hutch also creates a delta patch.
+Publish the artifact directory
+to a static host and configure its public HTTPS base URL:
+
+```ts
+import type { ElectrobunConfig } from "electrobun";
+
+export default {
+  app: {
+    name: "Updater Example",
+    identifier: "dev.example.updater",
+    version: "1.0.0",
+  },
+  release: {
+    baseUrl: "https://downloads.example.com/my-app",
+  },
+} satisfies ElectrobunConfig;
+```
+
+For [Managed Deploys](/electrobun/guides/managed-deploys/), configure
+`release.managed.appId` instead. Every SDK uses the same configuration: the core
+derives bundled metadata, installation identity, and update paths. Applications
+do not need to launch or configure update helpers themselves. Configuring the
+updater does not schedule network checks; your app decides when to check.
+
+From 2.0.6, native update preparation requires an HTTPS base URL without
+credentials, query parameters, or a fragment. HTTP is allowed only for local
+tests on `localhost`, `127.0.0.1`, or `[::1]`. Artifact redirects cannot
+downgrade HTTPS to HTTP; HTTP-to-HTTP redirects must stay on the same loopback
+host and port. See [Updates](/electrobun/guides/updates/) for migration from
+older release hosts.
+
+## Check and install
+
+```ts
+import { Updater } from "electrobun/main";
+
+const local = await Updater.getLocalInfo();
+console.log(`Running ${local.version} (${local.channel})`);
+
+const update = await Updater.checkForUpdate();
+if (update.updateAvailable) {
+  await Updater.downloadUpdate();
+
+  if (Updater.updateInfo().updateReady) {
+    await Updater.applyUpdate();
+  }
+}
+```
+
+`applyUpdate()` asks the normal `before-quit` handlers for permission before
+starting an apply helper. A veto leaves the application running. After approval,
+the core arms the helper and confirms handoff before the SDK begins normal
+application shutdown. The native helper revalidates the staged bundle,
+replaces the installed app transactionally, refreshes platform integration,
+and launches the new version. The helper waits for the running app to exit before
+swapping its files, including on Windows. If replacement, platform integration,
+or the launch operation fails, it attempts to restore the previous app.
+The old app is removed after the launch operation succeeds;
+this confirms that launch was requested, not that the application completed
+startup or passed an application-specific health check.
+It does nothing until a prepared download is ready.
+
+Starting with Electrobun 2.0.6, `downloadUpdate()` uses a native helper to
+reconstruct the exact current tar in RAM from installed file contents and an
+archive recipe. Original tar headers, ordering, and padding come from the
+recipe, so filesystem timestamps and tar tool differences do not change the
+patch input. File and archive digests must
+match before patching. Original signed file bytes are preserved without
+re-signing the app.
+
+The helper requests the patch named after the current hash and streams its
+output directly into a staged app. It follows intermediate hashes until it
+reaches the target release. A missing recipe, changed source file, unavailable
+patch, or failed patch attempt falls back to streaming the full archive into
+staging. The installed app remains untouched during preparation.
+
+<Aside type="note">
+The `dev` channel and `release.updateAuthority: "external"` or `"none"` disable
+Electrobun's direct updater. Exercise update installation with a packaged canary
+or stable build using direct update authority. Insights remains independent.
+</Aside>
+
+## Disk space during preparation
+
+The updater retains `<hash>.recipe.json` under the installed channel's
+`self-extraction` directory instead of the full uncompressed tar. When migrating
+an older installation, it removes the cached tar only after publishing a recipe
+and verifying that the installed app reproduces the original archive.
+
+Delta preparation holds one reconstructed source tar in RAM, plus recipe
+metadata and decoder buffers. This allocation is based on the uncompressed tar
+size, not the smaller patch download. It writes the downloaded patch and one
+replacement app to disk; it does not accumulate the new tar in a second RAM
+buffer.
+Between patch-chain hops, the intermediate app is reconstructed into RAM and
+removed before the next stage is extracted. If allocating the source buffer
+fails, the helper attempts full-download fallback, which needs decoder buffers
+but no complete source-tar buffer.
+
+Full downloads stream through decompression into the staged app, without keeping
+a complete compressed or uncompressed archive on disk. Both paths still need
+space for the replacement app, while the old app remains available for rollback.
+Preparation can fail if the disk remains full; do not treat a
+completed download as an applied update. Observe `updateReady`, status events,
+and `error`, and confirm the new version after relaunch.
+
+## Local and update metadata
+
+`checkForUpdate()` requests `<channel>-<os>-<arch>-update.json` from the
+configured release host. After validating an available release, it can request
+`<channel>-<os>-<arch>-checksum.json` from the same folder. The sidecar contains
+`hash`, which must match the release manifest, plus `tarSha256` and `tarSize`
+for the exact uncompressed archive. Its fixed name lets uploads replace the
+previous checksum for that channel and target. The
+canonical manifest keeps its original `artifact: { file }` shape for older
+clients.
+
+If the build hashes differ, the updater retries the metadata check to account
+for publication between requests, then fails if they still disagree. A missing
+fixed-name sidecar (`404`) falls back to
+`<channel>-<os>-<arch>-<hash>-checksum.json` for older hosts. If that is also
+missing, the existing update behavior is used. Other request failures, invalid
+JSON, or an invalid hash/checksum/size fail the check.
+Previously published manifests with inline `artifact.tarSha256` and
+`artifact.tarSize` remain supported; both fields must be valid when present.
+The updater ignores additional manifest fields while validating the fields it
+uses.
+See [Updates](/electrobun/guides/updates/) for publishing and host migration.
+
+`getLocalInfo()` returns the packaged `version.json` data:
+
+```ts
+import { Updater } from "electrobun/main";
+
+const info = await Updater.getLocalInfo();
+
+const version: string = info.version;
+const hash: string = info.hash;
+const baseUrl: string = info.baseUrl;
+const channel: string = info.channel;
+const name: string = info.name;
+const identifier: string = info.identifier;
+
+void version;
+void hash;
+void baseUrl;
+void channel;
+void name;
+void identifier;
+```
+
+`checkForUpdate()` and `updateInfo()` expose `version`, `hash`,
+`updateAvailable`, `updateReady`, and `error`.
+
+Convenience methods under `Updater.localInfo` return the current `version`,
+`hash`, `channel`, and `baseUrl`. `channelBucketUrl()` returns the base URL, and
+`appDataFolder()` returns the physical installed update workspace. Stable
+Electrobun v1.18.1+ and 2.0 apps use the same `stable` root.
+
+## Status reporting
+
+```ts
+import { Updater, type UpdateStatusEntry } from "electrobun/main";
+
+Updater.onStatusChange((entry: UpdateStatusEntry) => {
+  console.log(entry.status, entry.message, entry.details);
+});
+
+const history = Updater.getStatusHistory();
+Updater.clearStatusHistory();
+Updater.onStatusChange(null);
+
+void history;
+```
+
+Statuses cover checking, native update preparation, handoff, relaunch,
+completion, and errors. Native preparation currently reports its overall
+operation rather than individual patch-hop or byte-progress events.
+`UpdateStatusEntry` contains `status`, `message`, `timestamp`, and optional
+structured `details`.
+
+Native SDKs poll the same statuses and optional progress fields on their own
+application thread; the core worker never calls into a language runtime. See
+[native event polling and ownership](/electrobun/apis/updater-native/#events-and-lifetime).
