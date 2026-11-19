@@ -8,3 +8,6 @@
 - changefeed.subscribe() starts at current MAX(id): a new SSE stream never replays older changes.
 - Electrobun on Linux needs libayatana-appindicator3.so.1 at launch (Arch: `sudo pacman -S libayatana-appindicator`); missing it fails with "Failed to open native wrapper ... libNativeWrapper.so".
 - Linux dev launch logs `X11 Error: GLXBadWindow (code 170)` even though the window opens (verified via xprop WM_NAME). Application menus are unsupported on Linux. Keep UI controls in the webview.
+- Hutch `build.copy` destinations are relative to `Resources/app/`, not `Resources/`. The bundled main entry is `Resources/app/bun/index.js`, so schema.sql is copied to `bun/schema.sql` and the web build to `dist/web`.
+- Bundled `import.meta.url` differs from the dev source tree: src/http/static.ts must resolve both repo-root and `Resources/app/` layouts (webDir helper).
+- A preBuild hook (`scripts/electrobun-pre-build.ts`) runs `bun run build:web` so the self-contained UI exists before Hutch copies it; without it the webview gets ENOENT on /index.html.

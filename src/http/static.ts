@@ -4,8 +4,15 @@ import { fileURLToPath } from 'node:url';
 import type { Context } from 'hono';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WEB_SOURCE = path.join(ROOT, 'web');
-const DIST_WEB = path.join(ROOT, 'dist', 'web');
+// In the dev source tree ROOT is the repo root; in a bundled Electrobun app
+// build.copy places assets under Resources/app/. Support both layouts.
+const APP_ROOT = path.join(ROOT, 'app');
+const webDir = (name: string): string =>
+  existsSync(path.join(APP_ROOT, name, 'index.html'))
+    ? path.join(APP_ROOT, name)
+    : path.join(ROOT, name);
+const WEB_SOURCE = webDir('web');
+const DIST_WEB = webDir(path.join('dist', 'web'));
 const SHARED = path.join(ROOT, 'shared');
 
 // Dev flow always uses web/ (Bun transpiles .ts on request). The production

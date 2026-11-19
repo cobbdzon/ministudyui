@@ -10,7 +10,7 @@ Task format: Files / Done when / Don't. One task per session. Commit per green t
 - [x] T4: web/api.ts accepts a configurable base URL (default same-origin). Files: web/api.ts, web/api.mock.ts if needed. Done when: tests pass, ?mock=1 still works.
 ## Phase 1: Electrobun spike (read ALL.md allowed)
 - [x] T10: scaffold desktop/ from the official template, window opens a blank page; document commands in AGENTS.md.
-- [ ] T11: desktop/boxes/paths + server-host: start the HTTP app in-process on a free port, DB in user-data dir. Done when: window shows the real app with data persisting across restarts.
+- [x] T11: desktop/boxes/paths + server-host: start the HTTP app in-process on a free port, DB in user-data dir. Done when: window shows the real app with data persisting across restarts.
 - [ ] T12: security baseline: navigation locked to our origin, no remote content with native RPC access, per-launch API token, minimal RPC surface.
 - [ ] T13: packaged build runs on this OS and one other (record findings in gotchas.md, especially Linux WebKitGTK rendering).
 - [ ] T14: decide and implement how a packaged install exposes MCP on the same DB (see Open questions in decisions.md); write the decision first, then the task breakdown.
