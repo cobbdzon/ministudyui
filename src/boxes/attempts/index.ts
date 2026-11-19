@@ -2,19 +2,53 @@ import * as store from '../store/index.js';
 import { AppError } from '../errors.js';
 import { gradeAuto } from '../grader/index.js';
 import type {
-  AnswerResponse, AnswerRow, AttemptAnswerInput, AttemptListInput, AttemptRow,
-  AttemptStart, AttemptStartInput, AttemptSubmitInput, GradeAnswerInput,
+  AnswerResponse, AnswerRow, AttemptAnswerInput, AttemptListInput, AttemptQuestionsInput, AttemptRow,
+  AttemptStart, AttemptStartInput, AttemptSubmitInput, Choice, GradeAnswerInput,
   GradeResponse, PendingAnswerDto, PendingInput, QuestionAnswer, QuestionRow,
-  SubmitResponse,
+  QuizQuestionDto, QuizRow, SubmitResponse,
 } from '../../../shared/types.js';
 
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export function start({ quizId }: AttemptStartInput): AttemptStart {
-  const quiz = store.get('SELECT * FROM quizzes WHERE id=?', [quizId]);
+  const quiz = store.get<QuizRow>('SELECT * FROM quizzes WHERE id=?', [quizId]);
   if (!quiz) throw new AppError('NOT_FOUND', 'quiz not found');
-  const qs = store.all<{ points: number }>('SELECT points FROM questions WHERE quiz_id=?', [quizId]);
+  const qs = store.all<{ id: number; points: number }>('SELECT id, points FROM questions WHERE quiz_id=? ORDER BY position', [quizId]);
   const maxScore = qs.reduce((a, q) => a + q.points, 0);
-  const r = store.run('INSERT INTO attempts (quiz_id, max_score) VALUES (?,?)', [quizId, maxScore]);
+  // The order is fixed once, when the attempt starts, so resuming or reopening
+  // the result shows the same sequence the learner saw.
+  const order = quiz.shuffle ? shuffled(qs.map((q) => q.id)) : null;
+  const r = store.run('INSERT INTO attempts (quiz_id, max_score, question_order_json) VALUES (?,?,?)',
+    [quizId, maxScore, order ? JSON.stringify(order) : null]);
   return { id: r.lastInsertRowid, quiz_id: quizId, status: 'in_progress', max_score: maxScore };
+}
+
+export function attemptQuestions({ attemptId, includeAnswers = true }: AttemptQuestionsInput): QuizQuestionDto[] {
+  const att = store.get<AttemptRow>('SELECT * FROM attempts WHERE id=?', [attemptId]);
+  if (!att) throw new AppError('NOT_FOUND', 'attempt not found');
+  const rows = store.all<QuestionRow>('SELECT * FROM questions WHERE quiz_id=? ORDER BY position', [att.quiz_id]);
+  if (att.question_order_json) {
+    let ids: number[] = [];
+    try { ids = JSON.parse(att.question_order_json) as number[]; } catch { /* fall back to authored order */ }
+    const rank = new Map(ids.map((id, i) => [id, i]));
+    rows.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  }
+  return rows.map((r) => {
+    const q: QuizQuestionDto = {
+      id: r.id, position: r.position, type: r.type, prompt: r.prompt,
+      explanation: r.explanation, points: r.points,
+    };
+    if (r.choices_json) q.choices = JSON.parse(r.choices_json) as Choice[];
+    if (includeAnswers) q.answer = JSON.parse(r.answer_json) as QuestionAnswer;
+    return q;
+  });
 }
 
 export function restart({ quizId }: AttemptStartInput): AttemptStart {

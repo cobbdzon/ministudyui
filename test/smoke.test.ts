@@ -183,6 +183,49 @@ test('restart discards in-progress attempts and their pending AI-graded answers'
   }
 });
 
+test('shuffle flag is carried through create/update/import and fixes one order per attempt', () => {
+  store.open(':memory:');
+  store.migrate();
+  const originalRandom = Math.random;
+  try {
+    const mkQuestions = () => [1, 2, 3, 4].map((n) => ({
+      type: 'mcq' as const, prompt: `Q${n}?`,
+      choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'a',
+    }));
+    const quiz = library.quizCreate({ title: 'Shuffled', shuffle: true, questions: mkQuestions() });
+    const authored = library.quizGet({ quizId: quiz.id, includeAnswers: false }).questions.map((q) => q.id);
+    assert.equal(library.quizGet({ quizId: quiz.id }).quiz.shuffle, 1);
+
+    Math.random = () => 0; // deterministic reversal: [2,3,4,1]
+    const first = attempts.start({ quizId: quiz.id });
+    const order1 = attempts.attemptQuestions({ attemptId: first.id, includeAnswers: false }).map((q) => q.id);
+    assert.equal(order1.length, 4);
+    assert.notDeepEqual(order1, authored);
+    assert.deepEqual([...order1].sort((a, b) => a - b), [...authored].sort((a, b) => a - b));
+    // Re-reading keeps the same sequence: the order belongs to the attempt.
+    assert.deepEqual(attempts.attemptQuestions({ attemptId: first.id }).map((q) => q.id), order1);
+
+    Math.random = () => 0.5; // a different permutation on restart
+    const second = attempts.restart({ quizId: quiz.id });
+    const order2 = attempts.attemptQuestions({ attemptId: second.id }).map((q) => q.id);
+    assert.notDeepEqual(order2, order1);
+
+    library.quizUpdate({ quizId: quiz.id, shuffle: false });
+    assert.equal(library.quizGet({ quizId: quiz.id }).quiz.shuffle, 0);
+    const plain = attempts.start({ quizId: quiz.id });
+    assert.deepEqual(attempts.attemptQuestions({ attemptId: plain.id }).map((q) => q.id), authored);
+
+    library.importBundle({
+      quizzes: [{ title: 'Imported shuffled', shuffle: true, questions: mkQuestions() }],
+    });
+    const imported = library.quizList({}).find((q: QuizSummary) => q.title === 'Imported shuffled');
+    assert.equal(imported?.shuffle, 1);
+  } finally {
+    Math.random = originalRandom;
+    store.close();
+  }
+});
+
 test('importBundle creates decks, cards and quizzes with import provenance', () => {
   store.open(':memory:');
   store.migrate();

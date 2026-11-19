@@ -6,7 +6,7 @@ import type {
   AnswerRow, ApiErrorBody, AttemptRow, AttemptStart, AttemptStatus, AttemptSummary,
   Bundle, CardDto, CardInput, CardPatchInput, CardRow, CardScheduleInput, ChangeEvent, DeckCreateInput, DeckRef,
   DeckSummary, DeckUpdateInput, ImportResult, OkResponse, PendingAnswerDto, QuizQuestionDto,
-  QuizRow, QuizSummary, Rating, ReviewCardDto, Source, StatsDto,
+  QuizRow, QuizSummary, QuizUpdatePatch, Rating, ReviewCardDto, Source, StatsDto,
   UiContext, UiContextInput,
 } from '../shared/types.js';
 
@@ -78,9 +78,12 @@ export interface Api {
   undo(): Promise<{ ok: true; card_id: number }>;
   quizzes(deck?: DeckRef): Promise<{ quizzes: QuizSummary[] }>;
   quiz(id: number, opts?: { includeAnswers?: boolean }): Promise<{ quiz: QuizRow; questions: QuizQuestionDto[] }>;
+  updateQuiz(id: number, patch: QuizUpdatePatch): Promise<{
+    ok: true; quiz: Pick<QuizRow, 'id' | 'title' | 'description' | 'deck_id' | 'source' | 'shuffle'>;
+  }>;
   deleteQuiz(id: number, confirmTitle: string, deleteDeck?: boolean): Promise<OkResponse>;
   attempts(opts?: { status?: AttemptStatus; quizId?: number; limit?: number }): Promise<{ attempts: AttemptRow[] }>;
-  attempt(id: number): Promise<{ attempt: AttemptRow; answers: AnswerRow[] }>;
+  attempt(id: number, opts?: { includeAnswers?: boolean }): Promise<{ attempt: AttemptRow; answers: AnswerRow[]; questions: QuizQuestionDto[] }>;
   startAttempt(quizId: number): Promise<{ attempt: AttemptStart }>;
   restartAttempt(quizId: number): Promise<{ attempt: AttemptStart }>;
   answerAttempt(attemptId: number, questionId: number, response: unknown): Promise<{ ok: true; answer_id: number }>;
@@ -139,6 +142,9 @@ const real: Api = {
   quiz: (id, opts = {}) => unwrap(rpc.api.quizzes[':id'].$get({
     param: { id: String(id) }, query: { include_answers: String(opts.includeAnswers ?? true) },
   })),
+  updateQuiz: (id, patch) => unwrap(rpc.api.quizzes[':id'].$patch({
+    param: { id: String(id) }, json: patch,
+  })),
   deleteQuiz: (id, confirmTitle, deleteDeck = false) => unwrap(rpc.api.quizzes[':id'].$delete({
     param: { id: String(id) }, json: { confirm_title: confirmTitle, delete_deck: deleteDeck },
   })),
@@ -150,7 +156,9 @@ const real: Api = {
     query.limit = String(opts.limit ?? 20);
     return unwrap(rpc.api.attempts.$get({ query }));
   },
-  attempt: (id) => unwrap(rpc.api.attempts[':id'].$get({ param: { id: String(id) } })),
+  attempt: (id, opts = {}) => unwrap(rpc.api.attempts[':id'].$get({
+    param: { id: String(id) }, query: { include_answers: String(opts.includeAnswers ?? true) },
+  })),
   async startAttempt(quizId) {
     return { attempt: await unwrap(rpc.api.attempts.$post({ json: { quiz_id: quizId } })) };
   },

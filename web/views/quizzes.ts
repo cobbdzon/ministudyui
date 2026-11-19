@@ -38,6 +38,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                 const meta = [
                   q.question_count ? plural(q.question_count, 'question') : '',
                   q.total_points ? `${Math.round(q.total_points * 10) / 10} points` : '',
+                  q.shuffle ? 'Shuffled' : '',
                 ]
                   .filter(Boolean)
                   .join(' · ');

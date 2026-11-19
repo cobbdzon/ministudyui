@@ -174,13 +174,15 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   }
 
   async function load() {
-    const data = await ctx.api.attempt(attemptId as unknown as number);
+    const id = Number(attemptId);
+    const data = await ctx.api.attempt(id, { includeAnswers: true });
     if (!data?.attempt) throw new Error('Attempt not found');
     attempt = data.attempt;
     answers = data.answers || [];
     const quizData = await ctx.api.quiz(attempt.quiz_id, { includeAnswers: true });
     quiz = quizData.quiz;
-    questions = quizData.questions || [];
+    // Use the attempt's saved order so results line up with how the quiz was taken.
+    questions = data.questions?.length ? data.questions : (quizData.questions || []);
     render();
   }
 

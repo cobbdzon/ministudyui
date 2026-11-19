@@ -6,7 +6,7 @@ import type {
   MergedQuestion, OkResponse, QuestionAnswer, QuestionDeleteInput, QuestionInput,
   QuestionQuestionPatch, QuestionType, QuestionUpdateInput, QuizAddQuestionsInput,
   QuizCreateInput, QuizDeleteBoxInput, QuizGetInput, QuizListInput, QuizOutlineInput,
-  QuizRow, QuizSummary, QuizUpdateInput, ValidatedQuestion,
+  QuizRow, QuizSummary, QuizUpdateInput, Source, ValidatedQuestion,
 } from '../../../shared/types.js';
 
 function resolveDeck(deck: DeckRef): DeckRow {
@@ -191,7 +191,7 @@ export function validateQuestion(q: QuestionLike, i: number): ValidatedQuestion 
   };
 }
 
-export function quizCreate({ title, description, deck, questions }: QuizCreateInput): { id: number; title: string } {
+export function quizCreate({ title, description, deck, shuffle = false, questions }: QuizCreateInput): { id: number; title: string } {
   if (!title || title.length < 1 || title.length > 200) throw new AppError('VALIDATION', 'title', 'title');
   if (!Array.isArray(questions) || questions.length < 1 || questions.length > 100)
     throw new AppError('VALIDATION', 'questions', 'questions');
@@ -200,8 +200,8 @@ export function quizCreate({ title, description, deck, questions }: QuizCreateIn
     throw new AppError('CONFLICT', 'deck already has a quiz', 'deck');
   const qs = questions.map((q, i) => validateQuestion(q, i));
   return store.tx(() => {
-    const r = store.run('INSERT INTO quizzes (title, description, deck_id) VALUES (?,?,?)',
-      [title, description || '', deckId]);
+    const r = store.run('INSERT INTO quizzes (title, description, deck_id, shuffle) VALUES (?,?,?,?)',
+      [title, description || '', deckId, shuffle ? 1 : 0]);
     const quizId = r.lastInsertRowid;
     qs.forEach((q, i) => {
       store.run('INSERT INTO questions (quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?)',
@@ -263,8 +263,8 @@ export function quizList({ deck, limit }: QuizListInput): QuizSummary[] {
   return store.all<QuizSummary>(base + ' ORDER BY qz.id LIMIT ?', [lim]);
 }
 
-export function quizUpdate({ quizId, title, description, deck, source }: QuizUpdateInput): {
-  ok: true; quiz: { id: number; title: string; description: string; deck_id: number | null; source: string };
+export function quizUpdate({ quizId, title, description, deck, source, shuffle }: QuizUpdateInput): {
+  ok: true; quiz: { id: number; title: string; description: string; deck_id: number | null; source: Source; shuffle: number };
 } {
   const quiz = getQuiz(quizId);
   if (title !== undefined && (typeof title !== 'string' || title.length < 1 || title.length > 200))
@@ -279,9 +279,10 @@ export function quizUpdate({ quizId, title, description, deck, source }: QuizUpd
   const newTitle = title !== undefined ? title : quiz.title;
   const newDescription = description !== undefined ? description : quiz.description;
   const newSource = source !== undefined ? source : quiz.source;
-  store.run('UPDATE quizzes SET title=?, description=?, deck_id=?, source=? WHERE id=?',
-    [newTitle, newDescription, deckId, newSource, quizId]);
-  return { ok: true, quiz: { id: quiz.id, title: newTitle, description: newDescription, deck_id: deckId, source: newSource } };
+  const newShuffle = shuffle === undefined ? quiz.shuffle : (shuffle ? 1 : 0);
+  store.run('UPDATE quizzes SET title=?, description=?, deck_id=?, source=?, shuffle=? WHERE id=?',
+    [newTitle, newDescription, deckId, newSource, newShuffle, quizId]);
+  return { ok: true, quiz: { id: quiz.id, title: newTitle, description: newDescription, deck_id: deckId, source: newSource, shuffle: newShuffle } };
 }
 
 export function quizDelete({ quizId, confirmTitle, deleteDeck = false }: QuizDeleteBoxInput): OkResponse {
@@ -457,7 +458,7 @@ export function importBundle(data: Bundle): {
           `quizzes[${i}].questions[${j}]${last ? '.' + last : ''}`);
       }
     });
-    return { title: q.title, description: q.description ?? '', deck: q.deck, questions: preparedQuestions };
+    return { title: q.title, description: q.description ?? '', deck: q.deck, shuffle: q.shuffle === true, questions: preparedQuestions };
   });
 
   const bundleNames = new Set(preparedDecks.map((d) => d.name.toLowerCase()));
@@ -518,8 +519,8 @@ export function importBundle(data: Bundle): {
           deckId = Number(q.deck);
         }
       }
-      const r = store.run('INSERT INTO quizzes (title, description, deck_id, source) VALUES (?,?,?,?)',
-        [q.title, q.description, deckId, 'import']);
+      const r = store.run('INSERT INTO quizzes (title, description, deck_id, source, shuffle) VALUES (?,?,?,?,?)',
+        [q.title, q.description, deckId, 'import', q.shuffle ? 1 : 0]);
       const quizId = r.lastInsertRowid;
       counts.quizzes_created++;
       q.questions.forEach((question, i) => {

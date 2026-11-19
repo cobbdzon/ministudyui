@@ -142,6 +142,27 @@ describe('decks, cards and quizzes', () => {
     const without = await call(`/api/quizzes/${id}?include_answers=false`);
     expect(without.json.questions[0].answer).toBeUndefined();
   });
+
+  it('creates a shuffled quiz and toggles shuffle with PATCH', async () => {
+    const created = await call('/api/quizzes', {
+      method: 'POST',
+      body: {
+        title: 'Shuffle',
+        shuffle: true,
+        questions: [
+          { type: 'mcq', prompt: 'P?', choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'a' },
+        ],
+      },
+    });
+    expect(created.res.status).toBe(200);
+    const id = created.json.id;
+    expect((await call(`/api/quizzes/${id}`)).json.quiz.shuffle).toBe(1);
+
+    const patched = await call(`/api/quizzes/${id}`, { method: 'PATCH', body: { shuffle: false } });
+    expect(patched.res.status).toBe(200);
+    expect(patched.json.quiz.shuffle).toBe(0);
+    expect((await call(`/api/quizzes/${id}`)).json.quiz.shuffle).toBe(0);
+  });
 });
 
 describe('attempts, grading and stats', () => {
@@ -186,6 +207,40 @@ describe('attempts, grading and stats', () => {
     });
     expect(graded.json.attempt.status).toBe('graded');
     expect((await call(`/api/attempts/${attemptId}`)).json.attempt.status).toBe('graded');
+  });
+
+  it('serves one stable, shuffled question order for an attempt', async () => {
+    const originalRandom = Math.random;
+    Math.random = () => 0; // deterministic Fisher-Yates reversal
+    try {
+      const quiz = (await call('/api/quizzes', {
+        method: 'POST',
+        body: {
+          title: 'Order',
+          shuffle: true,
+          questions: [1, 2, 3, 4].map((n) => ({
+            type: 'mcq', prompt: `Q${n}?`,
+            choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'a',
+          })),
+        },
+      })).json;
+      const authored = (await call(`/api/quizzes/${quiz.id}`)).json.questions.map((q: { id: number }) => q.id);
+      const started = await call('/api/attempts', { method: 'POST', body: { quiz_id: quiz.id } });
+      const attemptId = started.json.id;
+
+      const first = await call(`/api/attempts/${attemptId}?include_answers=false`);
+      const second = await call(`/api/attempts/${attemptId}?include_answers=false`);
+      const order = first.json.questions.map((q: { id: number }) => q.id);
+      expect(order).not.toEqual(authored);
+      expect([...order].sort((a, b) => a - b)).toEqual([...authored].sort((a, b) => a - b));
+      expect(second.json.questions.map((q: { id: number }) => q.id)).toEqual(order);
+      expect(first.json.questions[0].answer).toBeUndefined();
+
+      const withAnswers = await call(`/api/attempts/${attemptId}`);
+      expect(withAnswers.json.questions[0].answer).toEqual({ correct: 'a' });
+    } finally {
+      Math.random = originalRandom;
+    }
   });
 
   it('reports all three new stats fields with a deck filter', async () => {

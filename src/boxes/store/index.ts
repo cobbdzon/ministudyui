@@ -59,6 +59,17 @@ export function migrate(): void {
     )`);
     db!.exec('PRAGMA user_version = 4');
   }
+  if (v < 5) {
+    // Fresh databases already have these columns from schema.sql; guard so the
+    // migration is safe to run against an existing v4 database.
+    const quizCols = db!.prepare('PRAGMA table_info(quizzes)').all() as Array<{ name: string }>;
+    if (!quizCols.some((c) => c.name === 'shuffle'))
+      db!.exec('ALTER TABLE quizzes ADD COLUMN shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0,1))');
+    const attCols = db!.prepare('PRAGMA table_info(attempts)').all() as Array<{ name: string }>;
+    if (!attCols.some((c) => c.name === 'question_order_json'))
+      db!.exec('ALTER TABLE attempts ADD COLUMN question_order_json TEXT');
+    db!.exec('PRAGMA user_version = 5');
+  }
 }
 
 export function tx<T>(fn: () => T): T {

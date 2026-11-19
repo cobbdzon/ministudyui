@@ -29,6 +29,7 @@ Quiz
   "title": string,               // required, 1-200 characters
   "description": string,         // optional, at most 2000 characters
   "deck": string,                // optional: a deck name from "decks" above, or an existing deck
+  "shuffle": boolean,            // optional, default false: randomize question order for each attempt
   "questions": [ Question, ... ] // required, 1-100
 }
 One quiz per deck: a deck can have at most one linked quiz, and a quiz can belong to at most one deck. Never give two quizzes the same deck.
@@ -69,6 +70,7 @@ EXAMPLE
     "title": "Derivatives quick check",
     "description": "One question at a time. **Markdown** and math are both supported.",
     "deck": "Calculus I",
+    "shuffle": true,
     "questions": [
       { "type": "mcq", "prompt": "Which expression gives the derivative of $x^2$?", "choices": [{"id":"a","text":"$x$"},{"id":"b","text":"$2x$"},{"id":"c","text":"$x^3$"}], "correct": "b", "points": 1 },
       { "type": "numeric", "prompt": "Evaluate $f'(3)$ for $f(x)=x^2$.\\n\\nRound to 3 decimals.", "value": 6, "tolerance": 0.001 }

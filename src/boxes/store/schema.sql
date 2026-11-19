@@ -46,6 +46,7 @@ CREATE TABLE quizzes (
   title       TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
   description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 2000),
   source      TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','ai','import')),
+  shuffle     INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0,1)),
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE questions (
@@ -67,7 +68,8 @@ CREATE TABLE attempts (
   submitted_at TEXT,
   status       TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress','submitted','graded')),
   score        REAL,
-  max_score    REAL
+  max_score    REAL,
+  question_order_json TEXT CHECK (question_order_json IS NULL OR json_valid(question_order_json))
 );
 CREATE INDEX idx_attempts_quiz ON attempts(quiz_id);
 CREATE INDEX idx_attempts_status ON attempts(status);

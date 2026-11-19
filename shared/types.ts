@@ -6,8 +6,8 @@ export type {
   Bundle, BundleDeck, BundleQuiz, CardAddInput, CardDeleteInput, CardInput,
   CardPatchInput, CardQuery, CardScheduleInput, DeckCreateInput, DeckDeleteInput, DeckUpdateInput,
   LatexInput, PendingQuery, QuizCreateInput, QuizDeleteInput, QuizGetQuery,
-  QuizIdInput, QuizListQuery, ReviewInput, ReviewQueueQuery, StatsQuery,
-  GradeInput, AnswerInput, QuestionsBodyInput, QuestionInput, AttemptListQuery,
+  QuizIdInput, QuizListQuery, QuizUpdateInput as QuizUpdatePatch, ReviewInput, ReviewQueueQuery, StatsQuery,
+  GradeInput, AnswerInput, QuestionsBodyInput, QuestionInput, AttemptGetQuery, AttemptListQuery,
   UiContextInput,
 } from './schemas.js';
 
@@ -37,7 +37,7 @@ export interface ReviewRow {
 }
 export interface QuizRow {
   id: number; title: string; description: string;
-  deck_id: number | null; source: Source; created_at: string;
+  deck_id: number | null; source: Source; shuffle: number; created_at: string;
 }
 export interface QuestionRow {
   id: number; quiz_id: number; position: number; type: QuestionType;
@@ -47,6 +47,7 @@ export interface QuestionRow {
 export interface AttemptRow {
   id: number; quiz_id: number; started_at: string; submitted_at: string | null;
   status: AttemptStatus; score: number | null; max_score: number | null;
+  question_order_json: string | null;
 }
 export interface AnswerRow {
   id: number; attempt_id: number; question_id: number; response: string;
@@ -162,7 +163,7 @@ export interface QuizGetResponse { quiz: QuizRow; questions: QuizQuestionDto[] }
 export interface QuizCreateResponse { id: number; title: string }
 export interface QuestionsAddResponse { question_ids: number[] }
 export interface AttemptListResponse { attempts: AttemptRow[] }
-export interface AttemptGetResponse { attempt: AttemptRow; answers: AnswerRow[] }
+export interface AttemptGetResponse { attempt: AttemptRow; answers: AnswerRow[]; questions: QuizQuestionDto[] }
 export interface AnswerResponse { ok: true; answer_id: number }
 export interface SubmitResponse { ok: true; attempt: AttemptSummary }
 export interface PendingResponse { answers: PendingAnswerDto[] }
@@ -207,7 +208,7 @@ export interface QuizAddQuestionsInput { quizId: number; questions: QuestionInpu
 export interface QuizGetInput { quizId: number; includeAnswers?: boolean }
 export interface QuizListInput { deck?: DeckRef; limit?: number }
 export interface QuizUpdateInput {
-  quizId: number; title?: string; description?: string; deck?: DeckRef; source?: Source;
+  quizId: number; title?: string; description?: string; deck?: DeckRef; source?: Source; shuffle?: boolean;
 }
 export interface QuizDeleteBoxInput { quizId: number; confirmTitle: string; deleteDeck?: boolean }
 export interface QuizOutlineInput { quizId: number }
@@ -215,6 +216,7 @@ export interface ReviewQueueInput { deck?: DeckRef; limit?: number }
 export interface ReviewBoxInput { cardId: number; rating: Rating }
 export interface StatsInput { deck?: DeckRef; days?: number }
 export interface AttemptStartInput { quizId: number }
+export interface AttemptQuestionsInput { attemptId: number; includeAnswers?: boolean }
 export interface AttemptAnswerInput { attemptId: number; questionId: number; response: unknown }
 export interface AttemptSubmitInput { attemptId: number }
 export interface GradeAnswerInput { answerId: number; points: number; feedback: string }

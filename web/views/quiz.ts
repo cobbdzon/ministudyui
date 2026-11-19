@@ -25,6 +25,9 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   let disposed = false;
   let quiz: QuizRow | null = null;
   let questions: QuizQuestionDto[] = [];
+  // The order locked in for the current attempt (may be shuffled). The overview
+  // preview always uses `questions` in authored order.
+  let runQuestions: QuizQuestionDto[] = [];
   let attempts: AttemptRow[] = [];
   let decks: DeckSummary[] = [];
   let mode: 'overview' | 'run' = 'overview';
@@ -96,6 +99,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const meta = [
       `<span class="chip chip--mono">${plural(questions.length, 'question')}</span>`,
       `<span class="chip chip--mono">${totalPoints()} points</span>`,
+      quiz?.shuffle ? `<span class="chip chip--tonal">Shuffled</span>` : '',
       quiz?.source === 'ai' ? `<span class="chip chip--tonal">${icon('auto_awesome')}AI-made</span>` : '',
     ]
       .filter(Boolean)
@@ -109,6 +113,10 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
           <div class="page-sub" id="quiz-description">${md(quiz?.description || 'One question at a time. Your answers are saved as you go.')}</div>
           ${linked}
           <div class="quiz-meta" style="margin-top:12px">${meta}</div>
+          <label class="check-row" style="margin-top:14px">
+            <input type="checkbox" id="shuffle-toggle" ${quiz.shuffle ? 'checked' : ''}>
+            <span>Shuffle questions for each attempt</span>
+          </label>
         </div>
         <div class="page-actions">
           ${inProgress
@@ -171,6 +179,20 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     el.querySelector('#start')?.addEventListener('click', startAttempt);
     el.querySelector('#resume')?.addEventListener('click', () => resumeAttempt(inProgress));
     el.querySelector('#delete-quiz')?.addEventListener('click', openDeleteQuiz);
+    el.querySelector('#shuffle-toggle')?.addEventListener('change', async (e: Event) => {
+      const input = e.currentTarget;
+      if (!(input instanceof HTMLInputElement) || !quiz) return;
+      const q = quiz;
+      const next = input.checked;
+      try {
+        await ctx.api.updateQuiz(Number(quizId), { shuffle: next });
+        q.shuffle = next ? 1 : 0;
+        renderOverview();
+      } catch (err) {
+        input.checked = !next;
+        toast(errorMessage(err, 'Could not change the shuffle setting'), { type: 'error' });
+      }
+    });
     renderMath(el.querySelector('#quiz-description'));
     el.querySelectorAll('.question-preview__prompt').forEach((p) => renderMath(p));
   }
@@ -251,6 +273,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       const res = inProgress
         ? await ctx.api.restartAttempt(Number(quizId))
         : await ctx.api.startAttempt(Number(quizId));
+      const data = await ctx.api.attempt(res.attempt.id, { includeAnswers: false });
+      runQuestions = data.questions?.length ? data.questions : questions;
       run = {
         attempt: res.attempt,
         answers: {},
@@ -267,12 +291,13 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   async function resumeAttempt(attemptRow: AttemptRow | undefined): Promise<void> {
     if (!attemptRow) return;
     try {
-      const data = await ctx.api.attempt(attemptRow.id);
+      const data = await ctx.api.attempt(attemptRow.id, { includeAnswers: false });
+      runQuestions = data.questions?.length ? data.questions : questions;
       const answers: Record<number, string | string[]> = {};
       for (const a of data.answers || []) {
         if (a.response !== null && a.response !== undefined) answers[a.question_id] = a.response;
       }
-      const firstUnanswered = questions.findIndex((q) => {
+      const firstUnanswered = runQuestions.findIndex((q) => {
         const v = answers[q.id];
         return v === undefined || v === '';
       });
@@ -290,7 +315,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   }
 
   function currentQuestion(): QuizQuestionDto | undefined {
-    return run ? questions[run.index] : undefined;
+    return run ? runQuestions[run.index] : undefined;
   }
 
   function hasAnswer(q: QuizQuestionDto): boolean {
@@ -316,7 +341,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   }
 
   async function goTo(index: number): Promise<void> {
-    if (!run || index < 0 || index >= questions.length) return;
+    if (!run || index < 0 || index >= runQuestions.length) return;
     try {
       await saveCurrent({ silent: true });
     } catch {
@@ -393,9 +418,9 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     if (!run) return;
     reportContext(q);
     const currentRun = run;
-    const total = questions.length;
+    const total = runQuestions.length;
     const i = run.index;
-    const answered = questions.filter(hasAnswer).length;
+    const answered = runQuestions.filter(hasAnswer).length;
     const flagged = run.flags.has(q.id);
     const isLast = i === total - 1;
     const pendingGrading = ['short', 'latex'].includes(q.type);
@@ -436,7 +461,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         </div>
 
         <nav class="runner-dots" aria-label="Jump to question">
-          ${questions
+          ${runQuestions
         .map(
           (item, idx) => `<button class="runner-dot" data-jump="${idx}" data-current="${idx === i
             }" data-answered="${hasAnswer(item)}" data-flagged="${currentRun.flags.has(item.id)}" aria-label="Question ${idx + 1
@@ -468,15 +493,15 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       label.dataset.selected = String(input.checked);
     });
     const dots = el.querySelectorAll<HTMLElement>('.runner-dot');
-    const answered = questions.filter(hasAnswer).length;
+    const answered = runQuestions.filter(hasAnswer).length;
     const counter = el.querySelector<HTMLElement>('.row--between .section-meta');
-    if (counter) counter.textContent = `${answered} of ${questions.length} answered`;
+    if (counter) counter.textContent = `${answered} of ${runQuestions.length} answered`;
     dots.forEach((d, idx) => {
-      d.dataset.answered = String(hasAnswer(questions[idx]));
+      const item = runQuestions[idx];
+      d.dataset.answered = String(hasAnswer(item));
       d.setAttribute(
         'aria-label',
-        `Question ${idx + 1}${hasAnswer(questions[idx]) ? ', answered' : ''}${currentRun.flags.has(questions[idx].id) ? ', flagged' : ''
-        }`
+        `Question ${idx + 1}${hasAnswer(item) ? ', answered' : ''}${currentRun.flags.has(item.id) ? ', flagged' : ''}`
       );
     });
   }
@@ -557,12 +582,12 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   async function submitQuiz(): Promise<void> {
     if (!run) return;
     await saveCurrent({ silent: true }).catch(() => { });
-    const answered = questions.filter(hasAnswer).length;
-    const unanswered = questions.length - answered;
-    const pending = questions.filter((q) => ['short', 'latex'].includes(q.type)).length;
+    const answered = runQuestions.filter(hasAnswer).length;
+    const unanswered = runQuestions.length - answered;
+    const pending = runQuestions.filter((q) => ['short', 'latex'].includes(q.type)).length;
     const value = await dialog({
       title: 'Submit this quiz?',
-      body: `<p>You answered <strong>${answered} of ${questions.length}</strong> questions.${unanswered ? ` ${plural(unanswered, 'question')} will be scored as unanswered.` : ''
+      body: `<p>You answered <strong>${answered} of ${runQuestions.length}</strong> questions.${unanswered ? ` ${plural(unanswered, 'question')} will be scored as unanswered.` : ''
         }</p>${pending
           ? `<p style="margin-top:8px">${plural(pending, 'free response')} ${pending === 1 ? 'goes' : 'go'
           } to your AI for grading. The score updates automatically when that is done.</p>`
@@ -592,14 +617,14 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (run.index === questions.length - 1) submitQuiz();
+      if (run.index === runQuestions.length - 1) submitQuiz();
       else goTo(run.index + 1);
       return;
     }
     if (typing) return;
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (run.index < questions.length - 1) goTo(run.index + 1);
+      if (run.index < runQuestions.length - 1) goTo(run.index + 1);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       if (run.index > 0) goTo(run.index - 1);

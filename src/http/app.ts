@@ -137,6 +137,13 @@ const routes = app
     })))
   .post('/api/quizzes', v('json', S.QuizCreateSchema), (c) =>
     c.json(library.quizCreate(c.req.valid('json'))))
+  .patch('/api/quizzes/:id', v('json', S.QuizUpdateSchema), (c) => {
+    const b = c.req.valid('json');
+    return c.json(library.quizUpdate({
+      quizId: parseId(c.req.param('id')), title: b.title, description: b.description,
+      deck: b.deck, source: b.source, shuffle: b.shuffle,
+    }));
+  })
   .delete('/api/quizzes/:id', v('json', S.QuizDeleteSchema), (c) => {
     const b = c.req.valid('json');
     return c.json(library.quizDelete({
@@ -162,12 +169,15 @@ const routes = app
       limit: Number(q.limit || 0) || 20,
     }) });
   })
-  .get('/api/attempts/:id', (c) => {
+  .get('/api/attempts/:id', v('query', S.AttemptGetQuerySchema), (c) => {
     const id = parseId(c.req.param('id'));
     const attempt = store.get<AttemptRow>('SELECT * FROM attempts WHERE id=?', [id]);
     if (!attempt) throw new AppError('NOT_FOUND', 'attempt not found');
     const answers = store.all<AnswerRow>('SELECT * FROM answers WHERE attempt_id=?', [id]);
-    return c.json({ attempt, answers });
+    const questions = attempts.attemptQuestions({
+      attemptId: id, includeAnswers: c.req.valid('query').include_answers !== 'false',
+    });
+    return c.json({ attempt, answers, questions });
   })
   .patch('/api/attempts/:id/answers/:qid', v('json', S.AnswerBodySchema), (c) =>
     c.json(attempts.answer({

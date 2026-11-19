@@ -93,7 +93,15 @@ export const QuizCreateSchema = z.looseObject({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   deck: DeckRefSchema.optional(),
+  shuffle: z.boolean().optional(),
   questions: z.array(QuestionSchema).min(1).max(100),
+});
+export const QuizUpdateSchema = z.looseObject({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  deck: DeckRefSchema.optional(),
+  source: SourceSchema.optional(),
+  shuffle: z.boolean().optional(),
 });
 export const QuestionsBodySchema = z.looseObject({
   questions: z.array(QuestionSchema).min(1).max(100),
@@ -112,6 +120,7 @@ const BundleQuizSchema = z.looseObject({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   deck: DeckRefSchema.optional(),
+  shuffle: z.boolean().optional(),
   questions: z.array(QuestionSchema).min(1).max(100),
 });
 export const BundleSchema = z.object({
@@ -150,6 +159,7 @@ export const CardQuerySchema = z.object({
 export const ReviewQueueQuerySchema = z.object({ deck: qstr, limit: qstr });
 export const QuizListQuerySchema = z.object({ deck: qstr, limit: qstr });
 export const QuizGetQuerySchema = z.object({ include_answers: qstr });
+export const AttemptGetQuerySchema = z.object({ include_answers: qstr });
 export const AttemptListQuerySchema = z.object({ status: qstr, quiz_id: qstr, limit: qstr });
 export const PendingQuerySchema = z.object({ limit: qstr });
 export const StatsQuerySchema = z.object({ deck: qstr, days: qstr });
@@ -166,6 +176,7 @@ export type ReviewInput = z.infer<typeof ReviewSchema>;
 export type QuestionInput = z.infer<typeof QuestionSchema>;
 export type QuestionsBodyInput = z.infer<typeof QuestionsBodySchema>;
 export type QuizCreateInput = z.infer<typeof QuizCreateSchema>;
+export type QuizUpdateInput = z.infer<typeof QuizUpdateSchema>;
 export type QuizDeleteInput = z.infer<typeof QuizDeleteSchema>;
 export type Bundle = z.infer<typeof BundleSchema>;
 export type BundleDeck = z.infer<typeof BundleDeckSchema>;
@@ -179,6 +190,7 @@ export type CardQuery = z.infer<typeof CardQuerySchema>;
 export type ReviewQueueQuery = z.infer<typeof ReviewQueueQuerySchema>;
 export type QuizListQuery = z.infer<typeof QuizListQuerySchema>;
 export type QuizGetQuery = z.infer<typeof QuizGetQuerySchema>;
+export type AttemptGetQuery = z.infer<typeof AttemptGetQuerySchema>;
 export type AttemptListQuery = z.infer<typeof AttemptListQuerySchema>;
 export type PendingQuery = z.infer<typeof PendingQuerySchema>;
 export type StatsQuery = z.infer<typeof StatsQuerySchema>;

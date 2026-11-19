@@ -15,7 +15,7 @@ interface CardFixture {
 }
 interface QuizFixture {
   id: number; deck_id: number | null; title: string;
-  description: string; source: Source; created_at: string;
+  description: string; source: Source; shuffle: number; created_at: string;
 }
 interface QuestionFixture {
   id: number; quiz_id: number; position: number; type: QuestionType;
@@ -25,6 +25,7 @@ interface QuestionFixture {
 interface AttemptFixture {
   id: number; quiz_id: number; started_at: string; submitted_at: string | null;
   status: AttemptStatus; score: number | null; max_score: number;
+  question_order_json: string | null;
 }
 interface AnswerFixture extends AnswerRow {}
 interface LastReview { card: CardFixture; wasDue: boolean; reps: number }
@@ -271,6 +272,7 @@ const quizzes: QuizFixture[] = [
     title: 'Integration by parts',
     description: 'Four questions on choosing parts, definite integrals, and one worked solution.',
     source: 'ai',
+    shuffle: 1,
     created_at: iso(6),
   },
   {
@@ -279,6 +281,7 @@ const quizzes: QuizFixture[] = [
     title: 'Eigenvalues check',
     description: 'A quick numeric check, then a proof you write out.',
     source: 'ai',
+    shuffle: 0,
     created_at: iso(3),
   },
 ];
@@ -388,6 +391,7 @@ const attempts: AttemptFixture[] = [
     status: 'graded',
     score: 5,
     max_score: 6,
+    question_order_json: null,
   },
   {
     id: 2,
@@ -397,6 +401,7 @@ const attempts: AttemptFixture[] = [
     status: 'submitted',
     score: 2,
     max_score: 6,
+    question_order_json: null,
   },
   {
     id: 3,
@@ -406,6 +411,7 @@ const attempts: AttemptFixture[] = [
     status: 'submitted',
     score: 2,
     max_score: 6,
+    question_order_json: null,
   },
   {
     id: 4,
@@ -415,6 +421,7 @@ const attempts: AttemptFixture[] = [
     status: 'in_progress',
     score: null,
     max_score: 6,
+    question_order_json: '[4,3,2,1]',
   },
 ];
 
@@ -503,6 +510,35 @@ function resolveDeck(ref: DeckRef): DeckFixture {
   const deck = typeof ref === 'number' ? decks.find((d) => d.id === ref) : decks.find((d) => d.name.toLowerCase() === String(ref).toLowerCase());
   if (!deck) throw new Error('deck not found');
   return deck;
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function questionDtos(quizId: number, includeAnswers: boolean, order?: number[] | null): QuizQuestionDto[] {
+  let qs = [...questions].filter((q) => q.quiz_id === quizId);
+  if (order?.length) {
+    const rank = new Map(order.map((id, i) => [id, i]));
+    qs.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  } else {
+    qs.sort((a, b) => a.position - b.position);
+  }
+  return qs.map((q) => {
+    const out: QuizQuestionDto = {
+      id: q.id, position: q.position, type: q.type, prompt: q.prompt,
+      explanation: q.explanation, points: q.points,
+      ...(q.choices ? { choices: q.choices } : {}),
+    };
+    if (includeAnswers && q.answer) out.answer = q.answer;
+    if (!includeAnswers || q.type === 'numeric') out.unit = q.answer?.unit ?? null;
+    return out;
+  });
 }
 
 function withPreview(card: CardFixture): ReviewCardDto {
@@ -702,9 +738,10 @@ const api: Api = {
           fail('a deck can only have one quiz');
         usedDecks.add(deckId);
       }
-      const quiz = {
+      const quiz: QuizFixture = {
         id: nextQuizId++, deck_id: deckId, title: q.title,
-        description: q.description || '', source: 'import' as Source, created_at: iso(0),
+        description: q.description || '', source: 'import' as Source,
+        shuffle: q.shuffle ? 1 : 0, created_at: iso(0),
       };
       quizzes.push(quiz);
       counts.quizzes_created++;
@@ -804,19 +841,18 @@ const api: Api = {
   quiz(id, { includeAnswers = true } = {}) {
     const quiz = quizzes.find((q) => String(q.id) === String(id));
     if (!quiz) fail('quiz not found');
-    const qs: QuizQuestionDto[] = questions
-      .filter((q) => q.quiz_id === quiz.id)
-      .map((q) => {
-        const out: QuizQuestionDto = {
-          id: q.id, position: q.position, type: q.type, prompt: q.prompt,
-          explanation: q.explanation, points: q.points,
-          ...(q.choices ? { choices: q.choices } : {}),
-        };
-        if (includeAnswers && q.answer) out.answer = q.answer;
-        if (!includeAnswers || q.type === 'numeric') out.unit = q.answer?.unit ?? null;
-        return out;
-      });
-    return Promise.resolve({ quiz: clone(quiz), questions: qs });
+    return Promise.resolve({ quiz: clone(quiz), questions: questionDtos(quiz.id, includeAnswers) });
+  },
+
+  updateQuiz(id, patch) {
+    const quiz = quizzes.find((q) => String(q.id) === String(id));
+    if (!quiz) fail('quiz not found');
+    Object.assign(quiz, {
+      title: patch.title ?? quiz.title,
+      description: patch.description ?? quiz.description,
+      shuffle: patch.shuffle === undefined ? quiz.shuffle : (patch.shuffle ? 1 : 0),
+    });
+    return Promise.resolve({ ok: true as const, quiz: clone(quiz) });
   },
 
   deleteQuiz(id, confirmTitle, deleteDeck = false) {
@@ -843,20 +879,26 @@ const api: Api = {
     return Promise.resolve({ attempts: clone(rows) });
   },
 
-  attempt(id) {
+  attempt(id, { includeAnswers = true } = {}) {
     const attempt = attempts.find((a) => String(a.id) === String(id));
     if (!attempt) fail('attempt not found');
+    let order: number[] | null = null;
+    if (attempt.question_order_json) {
+      try { order = JSON.parse(attempt.question_order_json) as number[]; } catch { /* ignore bad order */ }
+    }
     return Promise.resolve({
       attempt: clone(attempt),
       answers: clone(answers.filter((a) => a.attempt_id === attempt.id)),
+      questions: questionDtos(attempt.quiz_id, includeAnswers, order),
     });
   },
 
   startAttempt(quizId) {
     const quiz = quizzes.find((q) => q.id === Number(quizId));
     if (!quiz) fail('quiz not found');
-    const max = questions.filter((q) => q.quiz_id === quiz.id).reduce((a, q) => a + q.points, 0);
-    const attempt = {
+    const quizQuestions = questions.filter((q) => q.quiz_id === quiz.id);
+    const max = quizQuestions.reduce((a, q) => a + q.points, 0);
+    const attempt: AttemptFixture = {
       id: Math.max(...attempts.map((a) => a.id), 0) + 1,
       quiz_id: quiz.id,
       started_at: iso(0),
@@ -864,6 +906,9 @@ const api: Api = {
       status: 'in_progress' as const,
       score: null,
       max_score: max,
+      question_order_json: quiz.shuffle
+        ? JSON.stringify(shuffled(quizQuestions.map((q) => q.id)))
+        : null,
     };
     attempts.push(attempt);
     return Promise.resolve({ ok: true, attempt: clone(attempt) });
