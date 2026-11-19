@@ -12,7 +12,7 @@ Task format: Files / Done when / Don't. One task per session. Commit per green t
 - [x] T10: scaffold desktop/ from the official template, window opens a blank page; document commands in AGENTS.md.
 - [x] T11: desktop/boxes/paths + server-host: start the HTTP app in-process on a free port, DB in user-data dir. Done when: window shows the real app with data persisting across restarts.
 - [x] T12: security baseline: navigation locked to our origin, no remote content with native RPC access, per-launch API token, minimal RPC surface.
-- [ ] T13: packaged build runs on this OS and one other (record findings in gotchas.md, especially Linux WebKitGTK rendering).
+- [ ] T13: packaged build runs on this OS and one other (record findings in gotchas.md, especially Linux WebKitGTK rendering). BLOCKED: Linux verified (build + launch + WebKitGTK screenshot OK); Windows/macOS need native runners — Hutch does not cross-compile.
 - [ ] T14: decide and implement how a packaged install exposes MCP on the same DB (see Open questions in decisions.md); write the decision first, then the task breakdown.
 ## Phase 2: native features (each a box + platform.ts method + browser fallback)
 - [ ] tray + due-count badge, notifications, deep links (ministudy://review/3 sets the hash route), global shortcut, "copy MCP config" button.

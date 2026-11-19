@@ -12,3 +12,4 @@
 - Bundled `import.meta.url` differs from the dev source tree: src/http/static.ts must resolve both repo-root and `Resources/app/` layouts (webDir helper).
 - A preBuild hook (`scripts/electrobun-pre-build.ts`) runs `bun run build:web` so the self-contained UI exists before Hutch copies it; without it the webview gets ENOENT on /index.html.
 - Navigation rules are allow-by-default: use `["^*", "<our-origin>/*"]` (deny all, then allow). `sandbox: true` removes all native RPC from the webview, so external links currently do not open in the system browser — add a deliberately narrow openExternal handler in Phase 2 if needed.
+- T13 Linux packaged build (`hutch run build`) works: self-extractor installs to ~/.local/share/local.ministudyui.desktop/stable/app and launches; WebKitGTK rendered the UI correctly in a screenshot. Cross-OS verification (Windows/macOS) is blocked here — Hutch builds only for the host OS, so native runners are required.
