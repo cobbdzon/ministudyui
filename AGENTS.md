@@ -7,15 +7,17 @@ file you need instead of re-deriving the architecture each session.
 
 A quiet, local-first study app: decks, flashcards, spaced repetition (SRS),
 quizzes, attempts, grading, and stats. All data lives in one local SQLite file
-(`data/ministudy.db`). It has **three entry points over one shared core**:
+(`data/ministudy.db` for web/MCP, `<user-data>/ministudy.db` for desktop). It has
+**four entry points over one shared core**:
 
 | Entry point | File | Role |
 | --- | --- | --- |
 | HTTP server (Bun) | `src/http/server.ts` | Web UI + JSON API on `127.0.0.1:3000` |
 | MCP server (stdio) | `src/mcp/stdio.ts` | Same domain logic exposed as MCP tools |
+| Desktop shell (Electrobun) | `desktop/main.ts` | Runs the HTTP app in-process, system webview UI |
 | Shared core ("boxes") | `src/boxes/*/index.ts` | All business logic + SQLite access |
 
-Both servers are thin adapters that call the **same** box functions. Put domain
+All three adapters call the **same** box functions. Put domain
 logic in a box, never in an HTTP handler or MCP tool registration. (One legacy
 exception: `GET /api/attempts/:id` reads `attempts`/`answers` with raw SQL in
 `http/app.ts`.)
@@ -29,6 +31,7 @@ bun run seed:demo           # fill with sample decks/cards/quizzes/attempts (no-
 bun run start               # build assets + start HTTP server at http://127.0.0.1:3000
 bun run dev                 # watch server + watch/rebuild SCSS
 bun run mcp                 # start MCP stdio server (OpenCode normally starts this)
+bun run build:web           # bundle web/ into gitignored dist/web/ (self-contained)
 bun test                    # unit/integration tests
 bun run typecheck           # tsc --noEmit
 bunx sass web/scss:web/css --no-source-map   # one-off CSS build
@@ -45,8 +48,9 @@ see README.md.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP port; host is fixed to `127.0.0.1`. Used by `http/server.ts` and the host/origin check in `http/app.ts`. Changing it breaks `scripts/smoke.ts`, which hardcodes `http://127.0.0.1:3000`. |
-| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the MCP server, `scripts/seed.ts`, and `scripts/seed-demo.ts`; its default resolves relative to the source file, independent of `cwd`. The HTTP server does **not** read it — `src/http/server.ts` always opens `<repo>/data/ministudy.db`. Keep them in sync unless you intend separate stores. |
+| `PORT` | `3000` | HTTP port; host is fixed to `127.0.0.1`. Used by `http/server.ts` and the host/origin check in `http/app.ts`. Also settable programmatically: `start({ port })` in `http/server.ts` configures the guard via `configureHttp()`. Changing the default breaks `scripts/smoke.ts`, which hardcodes `http://127.0.0.1:3000`. |
+| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the HTTP server, MCP server, and seed scripts; default resolves relative to the source file, independent of `cwd`. The HTTP server creates the parent directory. Keep all three pointed at the same file unless you intend separate stores. |
+| `MINISTUDY_DIST` | unset | Set to `1` to make `http/server.ts` serve the gitignored `dist/web/` build instead of live `web/` sources. Desktop passes `serveDist: true` to `start()`. |
 
 `.env*` files are gitignored but **nothing loads them** (no dotenv dependency or env-file loading) — use real environment variables; there is no `.env.example`.
 
@@ -66,12 +70,12 @@ src/boxes/
   latex/           validate LaTeX spans with KaTeX
   errors.ts        AppError + asAppError (error codes -> HTTP status)
 src/http/
-  app.ts           ALL routes (~30) on a Hono app; exports `app` + `AppType`
-  server.ts        opens DB, migrates, Bun.serve
-  static.ts        serves web/ + shared/ + vendor JS; path-traversal guard; transpiles .ts on the fly
+  app.ts           all routes on a Hono app; exports `app` + `AppType` + `configureHttp()` (port, host/origin set, optional token, dbPath, mcpScript)
+  server.ts        exports `start({ port, dbPath, token, serveDist })`; opens DB, migrates, Bun.serve; CLI runs it when imported as main
+  static.ts        serves web/ or dist/web/ + shared/ + vendor JS; path-traversal guard; transpiles .ts on the fly; exports `configureStatic()`, `assetRoot()`
   validate.ts      v() wrapper: zValidator with the app's error envelope
 src/mcp/stdio.ts   MCP tool registration (snake_case args -> camelCase box inputs)
-web/               browser app, served raw (no bundler); TS transpiled by Bun on request
+web/               browser app; dev serves raw .ts transpiled by Bun on request, prod is bundled into dist/web/ by scripts/build-web.ts
   app.ts           shell, hash router, theme, shortcuts, live-update batching, boot
   api.ts           the ONLY data interface the UI uses (typed Hono `hc` client + `?mock=1` switch)
   api.mock.ts      in-memory implementation of `Api` for UI work without a server
@@ -82,7 +86,8 @@ web/               browser app, served raw (no bundler); TS transpiled by Bun on
   scss/            style sources (tokens, base, components, views, micro-interactions, app)
   css/             GENERATED + gitignored (built from scss)
   katex/, fonts/   vendored assets
-scripts/           seed.ts, seed-demo.ts, build-assets.ts, smoke.ts (Playwright screenshots)
+scripts/           seed.ts, seed-demo.ts, build-assets.ts, build-web.ts (prod UI), electrobun-pre-build.ts (Hutch hook), smoke.ts (Playwright screenshots)
+desktop/           Electrobun shell: main.ts (composition root), boxes/{paths,server-host,window}, views/mainview/, tsconfig.json; bundled MCP lives in dist/mcp/
 test/              bun test suites (see below)
 ```
 
@@ -90,7 +95,7 @@ test/              bun test suites (see below)
 
 - **Imports use `.js` extensions** for local TS files (e.g. `import * as store from '../store/index.js'`). tsconfig uses `moduleResolution: "Bundler"`, `strict`, `noEmit`. Shared types import as `../../shared/types.js` from `src/http/*` and `src/mcp/*`, but `../../../shared/types.js` from boxes (`src/boxes/*/index.ts`). **`shared/types.ts` must stay type-only** — web code uses `import type` so Bun erases it; a runtime import would be requested by the no-bundler browser and fail.
 - **Naming boundary:** core boxes take **camelCase** params (`confirmName`, `cardId`, `quizId`). HTTP JSON bodies and MCP tool args use **snake_case** (`confirm_name`, `card_id`, `quiz_id`). The adapters map between them — follow this when adding routes/tools.
-- **Single DB singleton:** `src/boxes/store/index.ts` holds module-level `db`. Call `store.open(path)` (sets pragmas: WAL, foreign_keys, busy_timeout=5000, synchronous=NORMAL) then `store.migrate()` at startup. Tests call `store.open(':memory:'); store.migrate()` in `beforeEach` (or inline per test in `smoke.test.ts`). On a fresh checkout, run `bun run seed` before `bun run start` **or `bun run mcp`** (neither opens a DB that lacks `data/`; `seed.ts`/`seed-demo.ts` create it), and build CSS once via `bunx sass web/scss:web/css --no-source-map` or use `bun run dev` — `web/css/` is gitignored and `start` builds only brand assets, so otherwise the app loads unstyled.
+- **Single DB singleton:** `src/boxes/store/index.ts` holds module-level `db`. Call `store.open(path)` (sets pragmas: WAL, foreign_keys, busy_timeout=5000, synchronous=NORMAL) then `store.migrate()` at startup. Tests call `store.open(':memory:'); store.migrate()` in `beforeEach` (or inline per test in `smoke.test.ts`). On a fresh checkout, run `bun run seed` before `bun run mcp` (`seed.ts`/`seed-demo.ts` create `data/` and migrate it); `bun run start` now creates the parent directory itself. Build CSS once via `bunx sass web/scss:web/css --no-source-map` or use `bun run dev` — `web/css/` is gitignored and `start` builds only brand assets, so otherwise the app loads unstyled.
 - **Schema/migrations:** `schema.sql` is the v1 base; incremental migrations are in `store.migrate()` keyed on `PRAGMA user_version` (currently 4). Fresh DBs get later columns/tables from `schema.sql` too, so migrations guard with `IF NOT EXISTS`/column checks. Don't edit applied migration numbers in place — add a new `v < N` block. DB columns are snake_case; timestamps are ISO strings — schema defaults use `strftime('%Y-%m-%dT%H:%M:%fZ','now')`, JS-side writes use `new Date().toISOString()`.
 - **DB tables:** `decks`, `cards`, `card_state` (SRS state + `ignored`), `reviews`, `quizzes`, `questions`, `attempts`, `answers`, `ui_context` (single row id=1), `changes`. Triggers auto-create `card_state` on card insert and log changes to `changes` for the SSE feed. `card_state` has no change trigger, so `cardSchedule` touches `cards.updated_at` to emit a feed event.
 - **Constraints to remember:** deck names unique (NOCASE); **one quiz per deck** (unique index `idx_quizzes_deck`, enforced in library + migration v2); questions unique per `(quiz_id, position)`; answer unique per `(attempt_id, question_id)`.
@@ -100,15 +105,15 @@ test/              bun test suites (see below)
 - **SRS:** rating 0..3 = Again/Hard/Good/Easy. `Again` → +10min, ease −0.2, reps=0; new passing card intervals are 1d/3d/7d; later intervals use SM-2 ease formula. `preview()` drives the on-screen rating-button labels. Don't change interval math without updating `test/smoke.test.ts` expectations (`test/schedule.test.ts` covers manual due-time/`ignored` overrides, not interval math).
 - **Small behavioral quirks:** `study.undo()` reverts the globally most recent review (not per-card) and deletes that review row. `library.cardAdd()` defaults `source` to `'ai'` when omitted (the MCP `card_add` tool has no source arg), while the DB column default is `'user'`. In HTTP the review queue without a `deck` resolves to deck 0 → empty queue, and an unknown numeric deck id also gives an empty queue, but an unknown deck **name** throws `NOT_FOUND`. Re-answering a question resets it to `pending` without re-running the auto-grader until `submit()`. `attempts.restart()` is destructive: it deletes **all** in-progress attempts for the quiz (with their answers, including pending ones) before starting a new one.
 - **Content rendering:** `web/math.ts` is the single point where untrusted text becomes DOM. Markdown via `marked` with **raw HTML escaped**, links restricted to http(s)/mailto, LaTeX protected from Markdown then KaTeX-rendered. Never bypass this sanitizer. `src/boxes/latex/index.ts` validates `$...$`/`$$...$$` server-side.
-- **Web app:** no bundler. `index.html` uses an import map for `hono/client` and `marked`, served from `node_modules` by `src/http/static.ts` under `/vendor/...`. Module scripts are `.js` URLs that map to `.ts` files transpiled on request. Hash router (`#/home`, `#/review/:deckId`, `#/deck/:id`, `#/quiz/:id`, `#/attempt/:id`, `#/quizzes`, `#/grading`, `#/stats`); `import` is **not** a route (`RoutedViewId` excludes it) — the Import view opens as a modal via `openImport()` from the shell. Views export `mount(el, ctx)` returning an optional cleanup fn. CSS is generated from `web/scss/` into gitignored `web/css/` — edit SCSS, never the generated CSS. **`web/scss/app.scss` is currently orphaned** — `index.html` doesn't link `/css/app.css`, so editing it has no visual effect (the linked styles are tokens/base/components/views/micro-interactions).
+- **Web app:** dev has no bundler — `index.html` uses an import map for `hono/client` and `marked`, served from `node_modules` by `src/http/static.ts` under `/vendor/...`. Module scripts are `.js` URLs that map to `.ts` files transpiled on request. Production uses `bun run build:web` → `dist/web/` (bundled deps, no node_modules needed) served via `MINISTUDY_DIST=1` / `serveDist`. Hash router (`#/home`, `#/review/:deckId`, `#/deck/:id`, `#/quiz/:id`, `#/attempt/:id`, `#/quizzes`, `#/grading`, `#/stats`); `import` is **not** a route (`RoutedViewId` excludes it) — the Import view opens as a modal via `openImport()` from the shell. Views export `mount(el, ctx)` returning an optional cleanup fn. CSS is generated from `web/scss/` into gitignored `web/css/` — edit SCSS, never the generated CSS. **`web/scss/app.scss` is currently orphaned** — `index.html` doesn't link `/css/app.css`, so editing it has no visual effect (the linked styles are tokens/base/components/views/micro-interactions).
 - **Mock mode:** append `?mock=1` to any URL to use `web/api.mock.ts` (in-memory fixtures) instead of the server — useful for UI work/screenshots without a DB. `scripts/smoke.ts` uses this but hardcodes an absolute, single-user Chromium path (`/home/samsepi0l/.cache/ms-playwright/chromium-1254/...`) and writes screenshots to `/tmp/opencode/shots` — edit those before using it elsewhere.
 - **UI ↔ MCP bridge:** the web app writes the currently-viewed card/question to the `ui_context` table as you navigate (`api.setUiContext`); other screens clear it with `{view:null}`. MCP `current_context` reads it so an LLM can answer about what's on screen. `GET/PUT /api/ui/context` are the endpoints.
 - **Live updates:** SQL triggers write to `changes`; SSE endpoint `/api/events` streams them with a 20s heartbeat comment, while the server runs with `idleTimeout: 255` — keep both in mind when changing long-held connections. `changefeed.subscribe()` polls every 1s and starts its cursor at the current `MAX(id)` (older changes are never delivered to a new stream); the web app batches events into a `live:change` event (550ms) and shows toasts.
-- **Security:** HTTP middleware rejects any request whose `Host`/`Origin` isn't `127.0.0.1:<PORT>` or `localhost:<PORT>`; port fixed host bind to `127.0.0.1`. Do not expose to a network. Static server guards against path traversal.
+- **Security:** HTTP middleware rejects any request whose `Host`/`Origin` isn't `127.0.0.1:<PORT>` or `localhost:<PORT>`; port fixed host bind to `127.0.0.1`. `configureHttp({ token })` optionally requires `x-ministudy-token` (or `?token=` for SSE) on `/api/*` — the desktop app sets a per-launch token. Do not expose to a network. Static server guards against path traversal.
 
 ## HTTP routes (in `src/http/app.ts`)
 
-Decks: `GET/POST /api/decks`, `PATCH/DELETE /api/decks/:id` · Cards: `GET/POST /api/cards`, `PATCH /api/cards/:id`, `PATCH /api/cards/:id/schedule`, `DELETE /api/cards` · Review: `GET /api/review/queue`, `POST /api/review`, `POST /api/review/undo` · Quizzes: `GET/POST /api/quizzes`, `GET/DELETE /api/quizzes/:id`, `POST /api/quizzes/:id/questions` · `POST /api/import` · Attempts: `POST /api/attempts`, `POST /api/attempts/restart`, `GET /api/attempts`, `GET /api/attempts/:id`, `PATCH /api/attempts/:id/answers/:qid`, `POST /api/attempts/:id/submit` · Grading: `GET /api/grading/pending`, `POST /api/grading/:id` · `GET /api/stats` · `POST /api/latex/validate` · `GET/PUT /api/ui/context` · `GET /api/events` (SSE). Unmatched paths fall through to static/SPA for **GET/HEAD only**; other methods and unknown `/api/*` get a JSON 404.
+Decks: `GET/POST /api/decks`, `PATCH/DELETE /api/decks/:id` · Cards: `GET/POST /api/cards`, `PATCH /api/cards/:id`, `PATCH /api/cards/:id/schedule`, `DELETE /api/cards` · Review: `GET /api/review/queue`, `POST /api/review`, `POST /api/review/undo` · Quizzes: `GET/POST /api/quizzes`, `GET/DELETE /api/quizzes/:id`, `POST /api/quizzes/:id/questions` · `POST /api/import` · Attempts: `POST /api/attempts`, `POST /api/attempts/restart`, `GET /api/attempts`, `GET /api/attempts/:id`, `PATCH /api/attempts/:id/answers/:qid`, `POST /api/attempts/:id/submit` · Grading: `GET /api/grading/pending`, `POST /api/grading/:id` · `GET /api/stats` · `POST /api/latex/validate` · `GET/PUT /api/ui/context` · `GET /api/mcp/config` (generated packaged-app MCP config; token-guarded) · `GET /api/events` (SSE). Unmatched paths fall through to static/SPA for **GET/HEAD only**; other methods and unknown `/api/*` get a JSON 404.
 
 ## MCP tools (in `src/mcp/stdio.ts`)
 
@@ -123,11 +128,13 @@ All return `{ok:true, ...}` on success or `{code, message, field, hint}` with `i
 
 - `test/http.test.ts`, `test/context.test.ts`, `test/schedule.test.ts` — `bun:test` style. The `app.request(...)` suites send `Host: 127.0.0.1:3000`; all reset to an in-memory DB per test.
 - `test/smoke.test.ts`, `test/markdown.test.ts` — `node:test` style (runs under Bun): SRS intervals, grader, box CRUD/import/delete/conflicts, and markdown/KaTeX rendering + sanitizer behavior.
+- `test/boundaries.test.ts` — enforces box import rules (no deep cross-box imports, no `electrobun` outside `desktop/`, none from `web/`; skips `.hutch/` and build config).
+- `test/http-config.test.ts`, `test/desktop-boxes.test.ts` — runtime port/host/token config and desktop boxes with fake ports.
 - Run all with `bun test` (single file: `bun test test/http.test.ts`); typecheck with `bun run typecheck`. Both must pass before finishing a change. No linter/formatter is configured — strict `tsc` + tests are the only automated checks.
 
 ## Housekeeping
 
-- Generated/gitignored — don't hand-edit or commit: `web/css/`, `web/og-image.png`, `data/`, `*.db*`, `node_modules/`, `.playwright-mcp/` (browser artifacts/logs), `dist/`. Source of truth: `web/scss/`, `web/*.svg`, `src/boxes/store/schema.sql`.
+- Generated/gitignored — don't hand-edit or commit: `web/css/`, `web/og-image.png`, `data/`, `*.db*`, `node_modules/`, `.playwright-mcp/` (browser artifacts/logs), `dist/`, `.hutch/`, `.cottontail-tmp/`, `build/`, `artifacts/`. Source of truth: `web/scss/`, `web/*.svg`, `src/boxes/store/schema.sql`, `electrobun.config.ts`, `hutch.config.ts`.
 - `web/messages.json` holds user-facing copy; it is loaded once at page startup and a random time-of-day greeting is picked, so refresh to see edits. Edit there, not in views. `web/favicon.svg` is served as-is; only `web/og-image.svg` is rendered into a generated PNG.
 - Keep changes scoped and consistent with surrounding style; when adding a domain feature, wire it through box → HTTP route → MCP tool → `Api` interface/mock, and add tests.
 
@@ -150,9 +157,9 @@ Do not guess Electrobun APIs from memory. If the docs don't cover it, say so and
 - UX/route reference for native features (deep links, tray badge, notifications): .opencode/memory/reference/ux-flow.md (read on demand, not auto-loaded).
 
 ## AI / MCP bridge (must survive the port)
-- Three entry points, one core: src/boxes owns all logic + SQLite; src/http/app.ts and src/mcp/stdio.ts are thin adapters. The desktop shell is a third adapter, not a rewrite.
+- Three adapters, one core: src/boxes owns all logic + SQLite; src/http/app.ts and src/mcp/stdio.ts are thin adapters. The desktop shell (desktop/main.ts) is the third adapter, not a rewrite.
 - The DB is the bus. The web app writes the viewed card/question to the single ui_context row (api.setUiContext); MCP current_context reads it. SQL triggers write `changes`; changefeed.subscribe() polls every 1s; SSE /api/events (20s heartbeat, server idleTimeout 255) feeds the web live:change batching (550ms). Any IPC added by the port must preserve this behavior or replace it deliberately (a decisions.md entry first).
-- Web UI and MCP run concurrently on ONE SQLite file (WAL, busy_timeout=5000): keep both pragmas. In desktop local mode the DB lives in the app's user-data dir, and the MCP server's DB_PATH must point at that same file, otherwise tools and UI silently see different data.
+- Web UI and MCP run concurrently on ONE SQLite file (WAL, busy_timeout=5000): keep both pragmas. In desktop local mode the DB lives in the app's user-data dir; `GET /api/mcp/config` generates the client config with the exact DB_PATH (`dist/mcp/stdio.js` + bundled Bun), so tools and UI always see the same data.
 - MCP tool schemas in src/mcp/stdio.ts are duplicated from shared/schemas.ts: keep them in sync. AI grading (attempts_pending_grading -> answer_grade) and AI content creation (MCP tools + the copy/paste IMPORT_PROMPT flow, both ending in library.importBundle) are unchanged by the port.
 - Remote/hosted mode would need per-user authenticated equivalents of ui_context, the change feed and MCP. That is Phase 4.
 
@@ -164,8 +171,8 @@ Do not guess Electrobun APIs from memory. If the docs don't cover it, say so and
 - Wiring happens only in the composition root (desktop/main.ts, web/app.ts). Boxes never wire themselves.
 - Each box has a test using fake ports. A box that can't be tested without its neighbors is wrongly coupled.
 - test/boundaries.test.ts enforces the import rules; it must pass with bun test.
-- Desktop layout: desktop/boxes/{server-host,window,tray,notify,deeplink,updater,paths}/index.ts + desktop/main.ts (composition root).
-- Web layout: web/platform.ts (interface) + platform.browser.ts + platform.electrobun.ts, chosen by feature detection at boot (mirrors api.ts / api.mock.ts).
+- Desktop layout: desktop/boxes/{paths,server-host,window}/index.ts exist; {tray,notify,deeplink,updater} are planned for Phase 2/3. desktop/main.ts is the composition root.
+- Web layout (planned for Phase 2): web/platform.ts (interface) + platform.browser.ts + platform.electrobun.ts, chosen by feature detection at boot (mirrors api.ts / api.mock.ts). None exist yet.
 
 ## Memory protocol
 - Session start: read .opencode/memory/progress.md (auto-loaded). One task per session.
@@ -182,8 +189,9 @@ Main process: desktop/main.ts (composition root). Bundled view: desktop/views/ma
 - `hutch run dev`                build, launch and watch the desktop window
 - `hutch run build`              host-only release build (--env=stable)
 - `hutch electrobun config`      print the normalized build config
-Desktop has its own tsconfig (desktop/tsconfig.json) extending .hutch/devkit/tsconfig.json;
-root `bun run typecheck` does not cover desktop/. `bun run dev` (web) is unchanged.
+Desktop has its own tsconfig (desktop/tsconfig.json) that maps `electrobun*` directly into
+`.hutch/devkit/api/` — the devkit tsconfig uses `baseUrl`, which TypeScript 7 removed, so it
+is not extended. root `bun run typecheck` does not cover desktop/. `bun run dev` (web) is unchanged.
 
 ### MCP in the packaged desktop app
 The desktop build ships a bundled stdio MCP server at `dist/mcp/stdio.js` (plus `schema.sql` beside it).
