@@ -10,8 +10,23 @@ import type {
   UiContext, UiContextInput,
 } from '../shared/types.js';
 
-const useMock = new URLSearchParams(location.search).has('mock');
-export const rpc = hc<AppType>('/');
+const params = new URLSearchParams(location.search);
+const useMock = params.has('mock');
+
+// Default to same-origin. The desktop shell can point the bundled UI at a
+// local in-process server (or a hosted one) via ?apiBase= or setApiBaseUrl().
+function normalizeBase(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === '/') return '/';
+  return trimmed.replace(/\/+$/, '');
+}
+let baseUrl = normalizeBase(params.get('apiBase') ?? '/');
+export const getApiBaseUrl = (): string => baseUrl;
+export let rpc = hc<AppType>(baseUrl);
+export function setApiBaseUrl(url: string): void {
+  baseUrl = normalizeBase(url);
+  rpc = hc<AppType>(baseUrl);
+}
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly body: ApiErrorBody) {
@@ -186,7 +201,7 @@ const real: Api = {
 
   subscribe(cb) {
     if (typeof EventSource === 'undefined') return () => {};
-    const es = new EventSource('/api/events');
+    const es = new EventSource(`${baseUrl === '/' ? '' : baseUrl}/api/events`);
     const handler = (e: MessageEvent<string>) => {
       try { cb(JSON.parse(e.data) as ChangeEvent); } catch { /* ignore malformed frames */ }
     };
