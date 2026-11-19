@@ -21,15 +21,32 @@ const STATUS: Record<ErrorCode, ErrStatus> = {
 
 const app = new Hono();
 
-// Security — exact current logic, applied to every request including static + SSE.
+export interface HttpSecurityConfig {
+  // null/undefined falls back to process.env.PORT (or 3000).
+  port?: number | null;
+  // Exact allowed Host / Origin values. Defaults to the loopback set for `port`.
+  // Keep this as strict as the original guard: no wildcards, no remote hosts.
+  hosts?: string[];
+  origins?: string[];
+}
+
+let security: HttpSecurityConfig = {};
+
+export function configureHttp(config: HttpSecurityConfig): void {
+  security = config;
+}
+
+// Security — applied to every request including static + SSE.
 app.use('*', async (c, next) => {
-  const port = Number(process.env.PORT || 3000);
+  const port = security.port ?? Number(process.env.PORT || 3000);
+  const hosts = security.hosts ?? [`127.0.0.1:${port}`, `localhost:${port}`];
+  const origins = security.origins ?? [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
   const host = c.req.header('host') ?? '';
-  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
+  if (!hosts.includes(host)) {
     return c.json({ code: 'FORBIDDEN', message: 'bad host/origin' }, 403);
   }
   const origin = c.req.header('origin');
-  if (origin && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+  if (origin && !origins.includes(origin)) {
     return c.json({ code: 'FORBIDDEN', message: 'bad host/origin' }, 403);
   }
   await next();
