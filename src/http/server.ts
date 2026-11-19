@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as store from '../boxes/store/index.js';
 import { app, configureHttp } from './app.js';
+import { configureStatic } from './static.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -11,6 +12,7 @@ export interface StartOptions {
   dbPath?: string;
   hostname?: string;
   idleTimeout?: number;
+  serveDist?: boolean;
 }
 
 // Programmatic entry point used by the HTTP server and the desktop shell.
@@ -22,6 +24,7 @@ export function start(options: StartOptions = {}) {
   store.open(dbPath);
   store.migrate();
   configureHttp({ port });
+  configureStatic({ dist: options.serveDist ?? process.env.MINISTUDY_DIST === '1' });
 
   const server = Bun.serve({
     fetch: app.fetch,

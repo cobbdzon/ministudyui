@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "assets": "bun scripts/build-assets.ts",
+    "build:web": "bun run assets && bun scripts/build-web.ts",
     "start": "bun run assets && bun src/http/server.ts",
     "mcp": "bun src/mcp/stdio.ts",
     "test": "bun test",

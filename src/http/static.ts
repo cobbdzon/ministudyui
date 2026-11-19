@@ -4,8 +4,16 @@ import { fileURLToPath } from 'node:url';
 import type { Context } from 'hono';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WEB = path.join(ROOT, 'web');
+const WEB_SOURCE = path.join(ROOT, 'web');
+const DIST_WEB = path.join(ROOT, 'dist', 'web');
 const SHARED = path.join(ROOT, 'shared');
+
+// Dev flow always uses web/ (Bun transpiles .ts on request). The production
+// bundle is opt-in so a stale dist/ never shadows a running dev server.
+let WEB = WEB_SOURCE;
+export function configureStatic(options: { dist?: boolean }): void {
+  WEB = options.dist && existsSync(path.join(DIST_WEB, 'index.html')) ? DIST_WEB : WEB_SOURCE;
+}
 // Hono's client is a runtime import in the browser. There is no bundler, so an
 // import map points "hono/client" at /vendor/hono/client/index.js and we serve
 // the whole dist tree from here (its internal imports are relative).
