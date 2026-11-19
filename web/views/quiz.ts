@@ -40,10 +40,10 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       attempt_id: run?.attempt?.id ?? null,
       question_id: q?.id ?? null,
       question_position: q && run ? run.index + 1 : null,
-    }).catch(() => {});
+    }).catch(() => { });
   }
   function clearContext(): void {
-    void ctx.api.setUiContext({ view: null }).catch(() => {});
+    void ctx.api.setUiContext({ view: null }).catch(() => { });
   }
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -89,8 +89,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       ? `<div class="linked-item">
            <span class="linked-item__label">Linked deck</span>
            <a class="chip chip--tonal chip--link" href="#/deck/${esc(
-             String(quiz.deck_id)
-           )}" title="Linked deck: ${esc(deckName())}">${icon('style')}${esc(deckName())}</a>
+        String(quiz.deck_id)
+      )}" title="Linked deck: ${esc(deckName())}">${icon('style')}${esc(deckName())}</a>
          </div>`
       : '';
     const meta = [
@@ -111,25 +111,48 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
           <div class="quiz-meta" style="margin-top:12px">${meta}</div>
         </div>
         <div class="page-actions">
-          ${
-            inProgress
-              ? `<button class="btn btn--filled" id="resume">${icon('play_arrow')}Resume attempt</button>
+          ${inProgress
+        ? `<button class="btn btn--filled" id="resume">${icon('play_arrow')}Resume attempt</button>
                  <button class="btn btn--text" id="start">Start over</button>`
-              : `<button class="btn btn--filled" id="start">${icon('play_arrow')}Start attempt</button>`
-          }
+        : `<button class="btn btn--filled" id="start">${icon('play_arrow')}Start attempt</button>`
+      }
           <button class="btn btn--outlined btn--danger" id="delete-quiz">${icon('delete')}Delete</button>
         </div>
       </header>
 
       <section style="margin-top:8px">
         <div class="section-head">
+          <h2 class="section-title">Your attempts</h2>
+          <span class="section-meta">${past.length ? plural(past.length, 'previous attempt') : 'No attempts yet'}</span>
+        </div>
+        ${past.length
+        ? `<div class="list attempts-list">${past
+          .map(
+            (a) => `<a class="list__row" href="#/attempt/${a.id}">
+                    <span class="list__main">
+                      <span class="list__title">Attempt ${a.id}</span>
+                      <span class="list__desc">${esc(relTime(a.submitted_at || a.started_at))}</span>
+                    </span>
+                    <span class="mono" style="font-size:12px">${escapeScore(a)}</span>
+                    ${statusChip(a.status)}
+                    <span class="list__chevron">${icon('chevron_right')}</span>
+                  </a>`
+          )
+          .join('')}</div>`
+        : `<p class="muted" style="font: var(--md-sys-typescale-body-medium)">No completed attempts yet. Starting one only takes a few minutes.</p>`
+      }
+      </section>
+
+
+      <section style="margin-top:32px">
+        <div class="section-head">
           <h2 class="section-title">Questions</h2>
           <span class="section-meta">Answers are revealed after submission</span>
         </div>
         <div class="panel panel--plain">
           ${questions
-            .map(
-              (q, i) => `<div class="question-preview">
+        .map(
+          (q, i) => `<div class="question-preview">
                 <span class="question-preview__num">${String(i + 1).padStart(2, '0')}</span>
                 <div class="question-preview__main">
                   <div class="question-preview__prompt">${md(q.prompt)}</div>
@@ -140,33 +163,9 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                   </div>
                 </div>
               </div>`
-            )
-            .join('')}
+        )
+        .join('')}
         </div>
-      </section>
-
-      <section style="margin-top:32px">
-        <div class="section-head">
-          <h2 class="section-title">Your attempts</h2>
-          <span class="section-meta">${past.length ? plural(past.length, 'previous attempt') : 'No attempts yet'}</span>
-        </div>
-        ${
-          past.length
-            ? `<div class="list attempts-list">${past
-                .map(
-                  (a) => `<a class="list__row" href="#/attempt/${a.id}">
-                    <span class="list__main">
-                      <span class="list__title">Attempt ${a.id}</span>
-                      <span class="list__desc">${esc(relTime(a.submitted_at || a.started_at))}</span>
-                    </span>
-                    <span class="mono" style="font-size:12px">${escapeScore(a)}</span>
-                    ${statusChip(a.status)}
-                    <span class="list__chevron">${icon('chevron_right')}</span>
-                  </a>`
-                )
-                .join('')}</div>`
-            : `<p class="muted" style="font: var(--md-sys-typescale-body-medium)">No completed attempts yet. Starting one only takes a few minutes.</p>`
-        }
       </section>`;
 
     el.querySelector('#start')?.addEventListener('click', startAttempt);
@@ -183,15 +182,14 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       title: 'Delete quiz',
       body: `
         <p>Type <strong>${esc(quiz.title)}</strong> to confirm. The quiz, its questions and its attempts will be removed.</p>
-        ${
-          name
-            ? `<p style="margin-top:10px">Linked deck: <strong>${esc(name)}</strong></p>
+        ${name
+          ? `<p style="margin-top:10px">Linked deck: <strong>${esc(name)}</strong></p>
                <label class="check-row">
                  <input type="checkbox" id="keep-deck" checked>
                  <span>Keep linked deck?</span>
                </label>
                <p class="muted" id="delete-quiz-hint" style="font-size:12.5px">The deck and its cards stay; only this quiz is removed.</p>`
-            : ''
+          : ''
         }
         <label class="field" style="margin-top:${name ? '16' : '14'}px">
           <span class="field__label">Quiz title</span>
@@ -367,8 +365,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     if (q.type === 'numeric') {
       return `<div class="numeric-answer">
         <input class="input" id="numeric-answer" type="text" inputmode="decimal" autocomplete="off" placeholder="Your answer" value="${esc(
-          value ?? ''
-        )}" aria-label="Numeric answer">
+        value ?? ''
+      )}" aria-label="Numeric answer">
         ${q.unit ? `<span class="numeric-answer__unit">${esc(q.unit)}</span>` : ''}
       </div>
       <p class="muted" style="margin-top:10px;font: var(--md-sys-typescale-body-small)">Tolerance is built into the question. Enter the number only.</p>`;
@@ -377,8 +375,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       <label class="field">
         <span class="field__label">Your answer</span>
         <textarea class="textarea textarea--mono" id="text-answer" maxlength="8000" rows="7" placeholder="$...$ for math, plain text otherwise">${esc(
-          value ?? ''
-        )}</textarea>
+      value ?? ''
+    )}</textarea>
       </label>
       <div class="field">
         <span class="field__label">Preview</span>
@@ -414,11 +412,10 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         <div class="runner__question">
           <div class="runner__type">
             <span class="chip chip--tonal">${esc(typeLabel(q.type))}</span>
-            ${
-              pendingGrading
-                ? `<span class="chip chip--warning">${icon('auto_awesome')}Graded by AI</span>`
-                : `<span class="chip chip--plain">Auto-graded</span>`
-            }
+            ${pendingGrading
+        ? `<span class="chip chip--warning">${icon('auto_awesome')}Graded by AI</span>`
+        : `<span class="chip chip--plain">Auto-graded</span>`
+      }
           </div>
           <div class="runner__prompt" id="runner-prompt" role="heading" aria-level="1" tabindex="-1">${md(q.prompt)}</div>
           <div class="runner__points">${q.points} ${Number(q.points) === 1 ? 'point' : 'points'}</div>
@@ -429,29 +426,24 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
         <div class="runner__foot">
           <button class="btn btn--text" id="prev" ${i === 0 ? 'disabled' : ''}>${icon('arrow_back')}Back</button>
           <div class="runner__foot-end">
-            <button class="icon-btn flag-btn" id="flag" aria-pressed="${flagged}" aria-label="${
-              flagged ? 'Remove flag' : 'Flag this question'
-            }" title="Flag for review">${icon('flag')}</button>
-            ${
-              isLast
-                ? `<button class="btn btn--filled" id="submit">Submit quiz</button>`
-                : `<button class="btn btn--filled" id="next">Next${icon('arrow_forward')}</button>`
-            }
+            <button class="icon-btn flag-btn" id="flag" aria-pressed="${flagged}" aria-label="${flagged ? 'Remove flag' : 'Flag this question'
+      }" title="Flag for review">${icon('flag')}</button>
+            ${isLast
+        ? `<button class="btn btn--filled" id="submit">Submit quiz</button>`
+        : `<button class="btn btn--filled" id="next">Next${icon('arrow_forward')}</button>`
+      }
           </div>
         </div>
 
         <nav class="runner-dots" aria-label="Jump to question">
           ${questions
-            .map(
-              (item, idx) => `<button class="runner-dot" data-jump="${idx}" data-current="${
-                idx === i
-              }" data-answered="${hasAnswer(item)}" data-flagged="${currentRun.flags.has(item.id)}" aria-label="Question ${
-                idx + 1
-              }${hasAnswer(item) ? ', answered' : ''}${currentRun.flags.has(item.id) ? ', flagged' : ''}"${
-                idx === i ? ' aria-current="step"' : ''
-              }>${idx + 1}</button>`
-            )
-            .join('')}
+        .map(
+          (item, idx) => `<button class="runner-dot" data-jump="${idx}" data-current="${idx === i
+            }" data-answered="${hasAnswer(item)}" data-flagged="${currentRun.flags.has(item.id)}" aria-label="Question ${idx + 1
+            }${hasAnswer(item) ? ', answered' : ''}${currentRun.flags.has(item.id) ? ', flagged' : ''}"${idx === i ? ' aria-current="step"' : ''
+            }>${idx + 1}</button>`
+        )
+        .join('')}
         </nav>
         <div class="row row--between" style="margin-top:12px">
           <span class="live"><span class="dot dot--live"></span>Answers save when you move on</span>
@@ -483,8 +475,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       d.dataset.answered = String(hasAnswer(questions[idx]));
       d.setAttribute(
         'aria-label',
-        `Question ${idx + 1}${hasAnswer(questions[idx]) ? ', answered' : ''}${
-          currentRun.flags.has(questions[idx].id) ? ', flagged' : ''
+        `Question ${idx + 1}${hasAnswer(questions[idx]) ? ', answered' : ''}${currentRun.flags.has(questions[idx].id) ? ', flagged' : ''
         }`
       );
     });
@@ -492,8 +483,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
 
   function bindRun(q: QuizQuestionDto): void {
     el.querySelector('#runner-close')?.addEventListener('click', async () => {
-      await saveCurrent({ silent: true }).catch(() => {});
-      await loadOverview().catch(() => {});
+      await saveCurrent({ silent: true }).catch(() => { });
+      await loadOverview().catch(() => { });
     });
     el.querySelector('#prev')?.addEventListener('click', () => {
       if (!run) return;
@@ -565,21 +556,18 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
 
   async function submitQuiz(): Promise<void> {
     if (!run) return;
-    await saveCurrent({ silent: true }).catch(() => {});
+    await saveCurrent({ silent: true }).catch(() => { });
     const answered = questions.filter(hasAnswer).length;
     const unanswered = questions.length - answered;
     const pending = questions.filter((q) => ['short', 'latex'].includes(q.type)).length;
     const value = await dialog({
       title: 'Submit this quiz?',
-      body: `<p>You answered <strong>${answered} of ${questions.length}</strong> questions.${
-        unanswered ? ` ${plural(unanswered, 'question')} will be scored as unanswered.` : ''
-      }</p>${
-        pending
-          ? `<p style="margin-top:8px">${plural(pending, 'free response')} ${
-              pending === 1 ? 'goes' : 'go'
-            } to your AI for grading. The score updates automatically when that is done.</p>`
+      body: `<p>You answered <strong>${answered} of ${questions.length}</strong> questions.${unanswered ? ` ${plural(unanswered, 'question')} will be scored as unanswered.` : ''
+        }</p>${pending
+          ? `<p style="margin-top:8px">${plural(pending, 'free response')} ${pending === 1 ? 'goes' : 'go'
+          } to your AI for grading. The score updates automatically when that is done.</p>`
           : ''
-      }`,
+        }`,
       actions: [
         { label: 'Keep working', value: 'cancel' },
         { label: 'Submit quiz', value: 'submit', variant: 'btn--filled' },
@@ -618,8 +606,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     } else if (e.key === 'Escape') {
       e.preventDefault();
       saveCurrent({ silent: true })
-        .catch(() => {})
-        .then(() => loadOverview().catch(() => {}));
+        .catch(() => { })
+        .then(() => loadOverview().catch(() => { }));
     } else if (/^[a-hA-H]$/.test(e.key)) {
       const q = currentQuestion();
       if (!q || !q.choices) return;
@@ -672,7 +660,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     clearTimeout(refreshTimer ?? undefined);
     refreshTimer = setTimeout(() => {
       if (disposed || mode !== 'overview') return;
-      loadOverview().catch(() => {});
+      loadOverview().catch(() => { });
     }, 450);
   });
 
