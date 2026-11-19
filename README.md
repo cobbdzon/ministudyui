@@ -1,21 +1,28 @@
 # ministudyui
 
 A quiet, local-first study app for decks, spaced repetition (SRS), quizzes,
-attempts, grading, and stats. It ships three entry points:
+attempts, grading, and stats. It ships four entry points over one shared core:
 
 - **Web UI + HTTP API** (`src/http/server.ts`) — Bun HTTP server on
   `127.0.0.1:3000`.
 - **MCP server** (`src/mcp/stdio.ts`) — stdio transport exposing the same
   library as MCP tools.
+- **Desktop shell** (`desktop/main.ts`) — Electrobun app that runs the HTTP
+  server in-process and renders the same web UI in the system webview.
 - **Shared core** (`src/boxes/*`) — decks, cards, SRS, quizzes, attempts,
   grading, stats, LaTeX validation.
 
-All data lives in a local SQLite database (`data/ministudy.db`).
+All data lives in a local SQLite database (`data/ministudy.db` for the web app;
+`<user-data>/ministudy.db` for the desktop app).
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) `>= 1.0` (`bun --version`)
 - Node is not required; Sass is installed as a dev dependency.
+- For the desktop app only: the [Hutch](https://hutch.blackboard.sh) CLI
+  (`curl -fsSL https://hutch.blackboard.sh/hutch/install.sh | sh`) and Electrobun
+  system webview libraries. On Arch Linux the extra runtime package is
+  `libayatana-appindicator`; see the Electrobun launcher error for other distros.
 
 ## Install
 
@@ -46,6 +53,17 @@ For live reload while editing:
 ```sh
 bun run dev   # server --watch + sass --watch
 ```
+
+### Production web build
+
+```sh
+bun run build:web
+```
+
+This bundles `web/` and its vendor dependencies into a self-contained
+`dist/web/` (gitignored) and compiles the SCSS into `dist/web/css/`. The server
+serves that directory when started with `MINISTUDY_DIST=1`; without it, it keeps
+serving the live `web/` sources, so `bun run dev` is unchanged.
 
 ### Styles (SCSS)
 
@@ -90,15 +108,54 @@ restricted to http(s) and mailto.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port. Host is fixed to `127.0.0.1`. |
-| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the MCP server (see below). |
+| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the HTTP server, MCP server, and seed scripts. |
+| `MINISTUDY_DIST` | unset | Set to `1` to serve the `dist/web/` production build. |
 
 The HTTP server always binds to localhost for security; do not expose it
 directly to a network.
 
+## Run the desktop app
+
+The desktop app is an Electrobun 2.x shell around the existing HTTP app. It runs
+the server **in-process** on a free loopback port (no sidecar), stores the DB in
+the app's user-data directory, and renders the same bundled `dist/web/` UI in
+the system webview. The source layout is `desktop/main.ts` (composition root)
+plus `desktop/boxes/*` (paths, server-host, window).
+
+```sh
+hutch electrobun prepare   # resolve core + .hutch/devkit SDK (first run)
+hutch run dev              # build, launch, and watch
+hutch run build            # host-only release build (--env=stable)
+hutch electrobun config    # print the normalized build config
+```
+
+The `preBuild` hook runs `bun run build:web` and bundles the stdio MCP server,
+so `dist/` is built automatically. `.hutch/`, `build/`, and `artifacts/` are
+generated and gitignored. Desktop sources are typechecked separately with
+`cd desktop && bunx tsc --noEmit -p tsconfig.json`; the root `bun run typecheck`
+does not cover them.
+
+Security baseline: navigation is locked to the app's own origin, the webview is
+sandboxed (no native RPC), and every `/api/*` request must carry a per-launch
+token that the app passes in the page URL. The webview loads the local server
+directly, so `web/api.ts` works with its default same-origin base URL.
+
+### MCP in the packaged app
+
+The desktop bundle ships a standalone `dist/mcp/stdio.js` plus `schema.sql`.
+The running app exposes `GET /api/mcp/config` (token-guarded) returning the DB
+path and a ready client config that uses the bundled Bun binary with `DB_PATH`
+pointed at the app's database. Use that config rather than hand-writing one, or
+the MCP tools and the UI will silently see different data. The decision and
+rationale live in `.opencode/memory/decisions.md`.
+
+Hutch builds only for the host OS; Windows and macOS builds require native CI
+runners.
+
 ## Tests and typecheck
 
 ```sh
-bun test          # unit tests (node:test via Bun)
+bun test          # unit/integration tests (bun:test and node:test via Bun)
 bun run typecheck # tsc --noEmit
 ```
 
@@ -204,3 +261,16 @@ The web UI and the MCP server share the same SQLite database. You can run both
 at once (`bun run start` + the MCP server started by OpenCode); SQLite is
 opened in WAL mode with a busy timeout to tolerate concurrent access. Avoid
 pointing them at different `DB_PATH` values unless you intend separate stores.
+
+## Repository tooling
+
+`.opencode/` holds local agent aids for this repo:
+
+- `.opencode/memory/` — architecture notes, decisions, progress, gotchas, and a
+  UX-flow reference. Files directly in `memory/` are auto-loaded into sessions.
+- `.opencode/memory/electrobun-docs/` — a pinned v2 docs snapshot (see
+  `INDEX.md`). Read `INDEX.md` first, then only the page you need; start with
+  `guides/migrating-to-v2.mdx` before writing Electrobun code.
+- `.opencode/skills/` — reusable instructions for box architecture, Electrobun
+  docs, verification, platform adapters, webview security, and commit style.
+- `.opencode/commands/handoff.md` — `/handoff` writes a session handoff.
