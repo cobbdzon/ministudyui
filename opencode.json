@@ -9,5 +9,8 @@
         ]
       }
     }
-  }
+  },
+  "instructions": [
+    ".opencode/memory/*.md"
+  ]
 }

@@ -130,3 +130,46 @@ All return `{ok:true, ...}` on success or `{code, message, field, hint}` with `i
 - Generated/gitignored — don't hand-edit or commit: `web/css/`, `web/og-image.png`, `data/`, `*.db*`, `node_modules/`, `.playwright-mcp/` (browser artifacts/logs), `dist/`. Source of truth: `web/scss/`, `web/*.svg`, `src/boxes/store/schema.sql`.
 - `web/messages.json` holds user-facing copy; it is loaded once at page startup and a random time-of-day greeting is picked, so refresh to see edits. Edit there, not in views. `web/favicon.svg` is served as-is; only `web/og-image.svg` is rendered into a generated PNG.
 - Keep changes scoped and consistent with surrounding style; when adding a domain feature, wire it through box → HTTP route → MCP tool → `Api` interface/mock, and add tests.
+
+## Electrobun docs
+Local docs: .opencode/memory/electrobun-docs/ (snapshot, see INDEX.md for the upstream commit).
+Normal sessions: read INDEX.md, then only the page(s) you need. Before writing any Electrobun code,
+read the matching apis/<topic>.mdx or guides/<topic>.mdx. Read guides/migrating-to-v2.mdx first:
+older tutorials and your memory of v1 are likely wrong.
+For the Phase 1 spike (tasks marked "read ALL.md") you may load ALL.md in full.
+Do not guess Electrobun APIs from memory. If the docs don't cover it, say so and stop.
+
+## Port architecture (desktop + web)
+- web/ is the single UI for both targets. Web is the product, desktop is a thin shell around it (Discord model).
+- Desktop = Electrobun: a Bun main process that imports src/boxes and runs the HTTP app in-process (no sidecar). UI renders in the system webview, not Chromium: test on every OS, Linux/WebKitGTK especially.
+- Electrobun is desktop-only (Windows/macOS/Linux) and cannot produce a hosted web app. Never import Electrobun from web/. All native access (notifications, tray, deep links, shortcuts) goes through web/platform.ts with a plain-browser fallback, feature-detected at runtime.
+- web/api.ts takes a configurable base URL. Local mode: 127.0.0.1 server inside the app, one DB per install in the app's user-data dir. Remote mode: a hosted server.
+- Web hosting = deploying src/http/server.ts. Separate, later phase. The app is single-user by design (loopback Host/Origin guard, ui_context single row id=1, global undo(), global change feed, stdio MCP on one local DB). Multi-user needs auth, per-user data, a per-user change feed/context, and MCP over authenticated HTTP. Do not start hosting work until decisions.md says which kind.
+- Phase order: 0 prerequisites -> 1 Electrobun spike -> 2 native features -> 3 packaging/signing/updates -> 4 hosting. Tasks live in .opencode/memory/progress.md.
+- UI: do not restyle existing views. Follow the web/scss tokens. Design skills (frontend-design, material-3) apply only to NEW desktop-specific UI (first-run screen, settings, title bar). Use the Google web-guidance skill to check every web feature used against Baseline support for WebKitGTK/WKWebView/WebView2 before relying on it.
+- UX/route reference for native features (deep links, tray badge, notifications): .opencode/memory/reference/ux-flow.md (read on demand, not auto-loaded).
+
+## AI / MCP bridge (must survive the port)
+- Three entry points, one core: src/boxes owns all logic + SQLite; src/http/app.ts and src/mcp/stdio.ts are thin adapters. The desktop shell is a third adapter, not a rewrite.
+- The DB is the bus. The web app writes the viewed card/question to the single ui_context row (api.setUiContext); MCP current_context reads it. SQL triggers write `changes`; changefeed.subscribe() polls every 1s; SSE /api/events (20s heartbeat, server idleTimeout 255) feeds the web live:change batching (550ms). Any IPC added by the port must preserve this behavior or replace it deliberately (a decisions.md entry first).
+- Web UI and MCP run concurrently on ONE SQLite file (WAL, busy_timeout=5000): keep both pragmas. In desktop local mode the DB lives in the app's user-data dir, and the MCP server's DB_PATH must point at that same file, otherwise tools and UI silently see different data.
+- MCP tool schemas in src/mcp/stdio.ts are duplicated from shared/schemas.ts: keep them in sync. AI grading (attempts_pending_grading -> answer_grade) and AI content creation (MCP tools + the copy/paste IMPORT_PROMPT flow, both ending in library.importBundle) are unchanged by the port.
+- Remote/hosted mode would need per-user authenticated equivalents of ui_context, the change feed and MCP. That is Phase 4.
+
+## Box architecture (applies to all new code)
+- Every feature is a black box with one public surface: its index.ts (typed interface only).
+- Cross-box imports go through index.ts only, never into internals.
+- Dependencies are injected via factory params (createX({ ...ports })), not imported ("USB ports").
+- Only adapter boxes may import platform libs (electrobun, bun:sqlite).
+- Wiring happens only in the composition root (desktop/main.ts, web/app.ts). Boxes never wire themselves.
+- Each box has a test using fake ports. A box that can't be tested without its neighbors is wrongly coupled.
+- test/boundaries.test.ts enforces the import rules; it must pass with bun test.
+- Desktop layout: desktop/boxes/{server-host,window,tray,notify,deeplink,updater,paths}/index.ts + desktop/main.ts (composition root).
+- Web layout: web/platform.ts (interface) + platform.browser.ts + platform.electrobun.ts, chosen by feature detection at boot (mirrors api.ts / api.mock.ts).
+
+## Memory protocol
+- Session start: read .opencode/memory/progress.md (auto-loaded). One task per session.
+- Task done = acceptance checks pass, `bun test` and `bun run typecheck` pass (paste real output), progress.md updated.
+- Non-obvious choice -> append to decisions.md. Surprising bug/fix -> append to gotchas.md.
+- Keep each memory file under ~150 lines; collapse finished phases into one line.
+- Decisions marked "Settled" are not revisited. If you disagree, write it under Open questions and stop.
