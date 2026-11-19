@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix, relative } from 'node:path';
 
 const root = join(import.meta.dir, '..');
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.opencode']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.opencode', '.hutch']);
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -35,10 +35,15 @@ function specifiers(text: string): string[] {
   return out;
 }
 
+// Build-time config files legitimately import the Electrobun config type;
+// the rule is about application code, not the build config.
+const BUILD_CONFIG = new Set(['electrobun.config.ts', 'hutch.config.ts']);
+
 const files = sourceFiles();
 const nativeImports = files.flatMap((f) =>
   specifiers(f.text)
     .filter((s) => s === 'electrobun' || s.startsWith('electrobun/'))
+    .filter(() => !BUILD_CONFIG.has(f.rel))
     .map((s) => `${f.rel}: ${s}`),
 );
 

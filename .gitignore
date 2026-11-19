@@ -6,6 +6,12 @@ node_modules/
 web/css/
 web/og-image.png
 
+# Electrobun desktop (generated devkit and release artifacts)
+.hutch/
+.cottontail-tmp/
+artifacts/
+build/
+
 # Local data / databases
 data/
 *.db

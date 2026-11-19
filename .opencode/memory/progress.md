@@ -9,7 +9,7 @@ Task format: Files / Done when / Don't. One task per session. Commit per green t
 - [x] T3: production build of web/ (bundle TS + vendor deps, compile SCSS) into a gitignored dist dir; server can serve it. Done when: `bun run build:web` output loads in a browser with no node_modules. Don't: change dev flow (bun run dev unchanged).
 - [x] T4: web/api.ts accepts a configurable base URL (default same-origin). Files: web/api.ts, web/api.mock.ts if needed. Done when: tests pass, ?mock=1 still works.
 ## Phase 1: Electrobun spike (read ALL.md allowed)
-- [ ] T10: scaffold desktop/ from the official template, window opens a blank page; document commands in AGENTS.md.
+- [x] T10: scaffold desktop/ from the official template, window opens a blank page; document commands in AGENTS.md.
 - [ ] T11: desktop/boxes/paths + server-host: start the HTTP app in-process on a free port, DB in user-data dir. Done when: window shows the real app with data persisting across restarts.
 - [ ] T12: security baseline: navigation locked to our origin, no remote content with native RPC access, per-launch API token, minimal RPC surface.
 - [ ] T13: packaged build runs on this OS and one other (record findings in gotchas.md, especially Linux WebKitGTK rendering).

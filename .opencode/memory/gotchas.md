@@ -6,3 +6,5 @@
 - Electrobun docs on the web and old tutorials may describe v1: this repo's snapshot is v2.x. See guides/migrating-to-v2.mdx.
 - study.undo() is global (reverts the most recent review of any card); a single-user assumption.
 - changefeed.subscribe() starts at current MAX(id): a new SSE stream never replays older changes.
+- Electrobun on Linux needs libayatana-appindicator3.so.1 at launch (Arch: `sudo pacman -S libayatana-appindicator`); missing it fails with "Failed to open native wrapper ... libNativeWrapper.so".
+- Linux dev launch logs `X11 Error: GLXBadWindow (code 170)` even though the window opens (verified via xprop WM_NAME). Application menus are unsupported on Linux. Keep UI controls in the webview.

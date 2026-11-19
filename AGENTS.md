@@ -173,3 +173,14 @@ Do not guess Electrobun APIs from memory. If the docs don't cover it, say so and
 - Non-obvious choice -> append to decisions.md. Surprising bug/fix -> append to gotchas.md.
 - Keep each memory file under ~150 lines; collapse finished phases into one line.
 - Decisions marked "Settled" are not revisited. If you disagree, write it under Open questions and stop.
+
+## Desktop (Electrobun) commands
+Scaffolded from the official hello-world template (Electrobun 2.0.6 / Hutch 0.29).
+Requires the global Hutch CLI (`curl -fsSL https://hutch.blackboard.sh/hutch/install.sh | sh`).
+Main process: desktop/main.ts (composition root). Bundled view: desktop/views/mainview/.
+- `hutch electrobun prepare`     resolve core + project `.hutch/devkit` SDK (gitignored)
+- `hutch run dev`                build, launch and watch the desktop window
+- `hutch run build`              host-only release build (--env=stable)
+- `hutch electrobun config`      print the normalized build config
+Desktop has its own tsconfig (desktop/tsconfig.json) extending .hutch/devkit/tsconfig.json;
+root `bun run typecheck` does not cover desktop/. `bun run dev` (web) is unchanged.

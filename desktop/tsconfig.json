@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["bun-types"],
+    "paths": {
+      "electrobun": ["../.hutch/devkit/api/sdks/main/index.ts"],
+      "electrobun/main": ["../.hutch/devkit/api/sdks/main/index.ts"],
+      "electrobun/view": ["../.hutch/devkit/api/browser/index.ts"]
+    }
+  },
+  "include": ["main.ts", "views/**/*", "../electrobun.config.ts"]
+}
