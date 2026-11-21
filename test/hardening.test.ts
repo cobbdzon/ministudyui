@@ -41,6 +41,12 @@ describe('review hardening', () => {
     }
   });
 
+  test('mock mode has no circular ESM import with api.ts', () => {
+    const src = readFileSync('web/api.mock.ts', 'utf8');
+    expect(src).not.toMatch(/import\s*\{\s*ApiError\s*\}\s*from\s*['"]\.\/api\.js['"]/);
+    expect(src).toMatch(/class ApiError extends Error/);
+  });
+
   test('invite and recovery hash lookups use constant-time comparison', () => {
     const src = readFileSync('src/boxes/auth/index.ts', 'utf8');
     expect(src).toMatch(/vault\.constantTimeEqual\(Buffer\.from\(hash, 'hex'\), stored\)/);

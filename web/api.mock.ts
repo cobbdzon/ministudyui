@@ -1,8 +1,21 @@
 // In-memory fixtures with the same interface as api.ts's real adapter.
 // Math-heavy content doubles as the KaTeX rendering regression fixture.
-import type { Api } from './api.js';
+// Do NOT import ApiError from api.ts: api.ts top-level-awaits this module, and
+// a static import back to it deadlocks the ESM graph in the no-bundler browser.
+import type { ApiErrorBody } from '../shared/types.js';
+class ApiError extends Error {
+  constructor(readonly status: number, readonly body: ApiErrorBody) {
+    super(body.message || `Request failed (${status})`);
+    this.name = 'ApiError';
+  }
+}
+import type {
+  Api, AdminInvite, AdminUser, AgentToken, AgentTokenResult, AuthResult,
+  AuthStatus, AuthUser, ExportBundle, InviteResult, RecoverResult, SetupResult,
+} from './api.js';
 import type {
   AnswerRow, AttemptStatus, CardDto, Choice, DeckRef, DeckSummary, GradeResult,
+  OkResponse,
   PendingAnswerDto, QuestionAnswer, QuestionType, QuizQuestionDto,
   QuizSummary, ReviewCardDto, Source, StatsDto, UiContext, UiContextInput,
 } from '../shared/types.js';
@@ -622,7 +635,146 @@ function recompute(attemptId: number): AttemptFixture {
 
 let mockUiContext: UiContext | null = null;
 
+/* ---------- Auth / accounts ------------------------------------------------ */
+
+// The mock always represents a single demo admin. `?mock=1&auth=locked` starts
+// on the gate; any credentials unlock it so the UI can be reviewed offline.
+const DEMO_USER: AuthUser = { username: 'demo', is_admin: true };
+let mockAuth: 'setup' | 'locked' | 'unlocked' =
+  new URLSearchParams(location.search).get('auth') === 'locked' ? 'locked' : 'unlocked';
+
+function requireUnlocked(): void {
+  if (mockAuth === 'unlocked') return;
+  window.dispatchEvent(new CustomEvent('auth:locked'));
+  throw new ApiError(401, { code: 'UNAUTHENTICATED', message: 'Authentication required' });
+}
+function mockUnlock(): AuthUser {
+  mockAuth = 'unlocked';
+  return { ...DEMO_USER };
+}
+
+const mockAdminUsers: AdminUser[] = [
+  { id: 1, username: 'demo', is_admin: 1, disabled_at: null, created_at: iso(60) },
+  { id: 2, username: 'student', is_admin: 0, disabled_at: null, created_at: iso(14) },
+];
+const mockAdminInvites: AdminInvite[] = [
+  {
+    id: 1, created_by: 1, expires_at: new Date(NOW + 5 * 86400000).toISOString(),
+    used_by: null, used_at: null, created_at: iso(2),
+  },
+];
+const mockTokens: AgentToken[] = [
+  {
+    token_id: 'a1b2c3d4e5f60718', mode: 'write', label: 'Example agent',
+    created_at: iso(5), last_used_at: iso(1), revoked_at: null,
+  },
+];
+
 const api: Api = {
+  auth: {
+    status(): Promise<AuthStatus> {
+      return Promise.resolve({
+        status: mockAuth,
+        user: mockAuth === 'unlocked' ? { ...DEMO_USER } : null,
+      });
+    },
+    setup(): Promise<SetupResult> {
+      return Promise.resolve({
+        ok: true, recovery_key: 'MOCK-DEMO-RECOVERY-KEY', user: mockUnlock(),
+      });
+    },
+    login(): Promise<AuthResult> {
+      return Promise.resolve({ ok: true, user: mockUnlock() });
+    },
+    logout(): Promise<OkResponse> {
+      mockAuth = 'locked';
+      return Promise.resolve({ ok: true });
+    },
+    recover(): Promise<RecoverResult> {
+      mockUnlock();
+      return Promise.resolve({ ok: true, user: { username: DEMO_USER.username } });
+    },
+    register(): Promise<AuthResult> {
+      return Promise.resolve({ ok: true, user: mockUnlock() });
+    },
+    changePassphrase(): Promise<OkResponse> {
+      requireUnlocked();
+      return Promise.resolve({ ok: true });
+    },
+  },
+
+  adminUsers(): Promise<{ users: AdminUser[] }> {
+    requireUnlocked();
+    return Promise.resolve({ users: clone(mockAdminUsers) });
+  },
+  adminInvites(): Promise<{ invites: AdminInvite[] }> {
+    requireUnlocked();
+    return Promise.resolve({ invites: clone(mockAdminInvites) });
+  },
+  createInvite(ttlSeconds = 7 * 86400): Promise<InviteResult> {
+    requireUnlocked();
+    const invite: AdminInvite = {
+      id: mockAdminInvites.length + 1, created_by: 1,
+      expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      used_by: null, used_at: null, created_at: new Date().toISOString(),
+    };
+    mockAdminInvites.unshift(invite);
+    return Promise.resolve({ ok: true, code: `msi-mock-${invite.id}-demo`, expires_at: invite.expires_at });
+  },
+  setUserDisabled(id, disabled): Promise<OkResponse> {
+    requireUnlocked();
+    const user = mockAdminUsers.find((u) => u.id === id);
+    if (!user) fail('user not found');
+    user.disabled_at = disabled ? new Date().toISOString() : null;
+    return Promise.resolve({ ok: true });
+  },
+  deleteUser(id): Promise<OkResponse> {
+    requireUnlocked();
+    const idx = mockAdminUsers.findIndex((u) => u.id === id);
+    if (idx < 0) fail('user not found');
+    mockAdminUsers.splice(idx, 1);
+    return Promise.resolve({ ok: true });
+  },
+
+  agentTokens(): Promise<{ tokens: AgentToken[] }> {
+    requireUnlocked();
+    return Promise.resolve({ tokens: clone(mockTokens) });
+  },
+  createAgentToken(label, readOnly): Promise<AgentTokenResult> {
+    requireUnlocked();
+    if (!label.trim()) fail('label is required');
+    const token: AgentToken = {
+      token_id: Math.random().toString(16).slice(2, 18).padEnd(16, '0'),
+      mode: readOnly ? 'read' : 'write', label: label.trim(),
+      created_at: new Date().toISOString(), last_used_at: null, revoked_at: null,
+    };
+    mockTokens.unshift(token);
+    return Promise.resolve({
+      ok: true, token: `msk_${token.token_id}.mock-secret`,
+      token_id: token.token_id, label: token.label, mode: token.mode, created_at: token.created_at,
+    });
+  },
+  revokeAgentToken(id): Promise<OkResponse> {
+    requireUnlocked();
+    const token = mockTokens.find((t) => t.token_id === id);
+    if (!token) fail('token not found');
+    token.revoked_at = new Date().toISOString();
+    return Promise.resolve({ ok: true });
+  },
+  exportBundle(): Promise<ExportBundle> {
+    requireUnlocked();
+    const data: ExportBundle = {
+      exported_at: new Date().toISOString(),
+      decks: summaries().map((d) => ({
+        name: d.name, description: d.description,
+        cards: cards.filter((c) => c.deck_id === d.id).map(publicCard),
+      })),
+      quizzes: quizzes.map((q) => ({ ...clone(q), questions: questionDtos(q.id, true) })),
+      srs: [], attempts: clone(attempts),
+    };
+    return Promise.resolve(data);
+  },
+
   decks() {
     return Promise.resolve({ decks: clone(summaries()) });
   },
@@ -1053,4 +1205,16 @@ const api: Api = {
   },
 };
 
-export default api;
+// Keep every data method behind the lock, including ones added later. Public
+// auth methods and the SSE stub stay reachable from the gate.
+const guarded = { ...api } as Api;
+for (const key of Object.keys(api) as Array<keyof Api>) {
+  if (key === 'auth' || key === 'subscribe') continue;
+  const method = api[key] as (...args: unknown[]) => unknown;
+  (guarded as unknown as Record<string, unknown>)[key] = (...args: unknown[]) => {
+    requireUnlocked();
+    return method.apply(api, args);
+  };
+}
+
+export default guarded;

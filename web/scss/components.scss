@@ -951,3 +951,52 @@ kbd {
     animation: none;
   }
 }
+
+/* ---------- Copy buttons (tokens, invite links, config snippets) ---------- */
+
+.copy-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  vertical-align: middle;
+}
+
+.copy-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.copy-btn:hover,
+.copy-btn:focus-visible {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.copy-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Kept in the layout with opacity so announcements don't shift the view. */
+.copy-feedback {
+  min-width: 62px;
+  font: var(--md-sys-typescale-label-small);
+  color: var(--md-sys-color-primary);
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+}
+
+.copy-feedback.is-visible {
+  opacity: 1;
+}

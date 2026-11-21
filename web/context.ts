@@ -20,3 +20,9 @@ export interface AppContext {
 
 export type Mount = (el: HTMLElement, ctx: AppContext) => Promise<void | (() => void)>;
 export interface ViewModule { mount: Mount; openImport?(ctx: AppContext): void }
+
+declare global {
+  interface WindowEventMap {
+    'auth:locked': CustomEvent;
+  }
+}

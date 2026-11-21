@@ -24,5 +24,53 @@
       "One more session before bed?",
       "Good evening. Kettle's on."
     ]
+  },
+  "auth": {
+    "brand": "ministudyui",
+    "tagline": "A quiet place for decks, review, and quizzes.",
+    "username": "Username",
+    "passphrase": "Passphrase",
+    "confirmPassphrase": "Confirm passphrase",
+    "recoveryKey": "Recovery key",
+    "inviteCode": "Invite code",
+    "setup": {
+      "title": "Set up your study space",
+      "intro": "You are the first user. Choose a username and a passphrase of at least 10 characters.",
+      "submit": "Create account",
+      "toLogin": "Already set up? Sign in"
+    },
+    "login": {
+      "title": "Welcome back",
+      "intro": "Sign in to unlock your decks and study data.",
+      "submit": "Sign in",
+      "toRecover": "Lost your passphrase? Recover with your key",
+      "toRegister": "Have an invite code? Register"
+    },
+    "recover": {
+      "title": "Recover your account",
+      "intro": "Enter the recovery key you saved at sign-up and choose a new passphrase.",
+      "submit": "Reset passphrase",
+      "toLogin": "Back to sign in"
+    },
+    "register": {
+      "title": "Join with an invite",
+      "intro": "You need an invite code from the server operator to create an account.",
+      "submit": "Create my account",
+      "toLogin": "Already have an account? Sign in",
+      "disclosure": "Server-side encryption protects your content against disk or backup theft, other users of this computer, and other app users. The server operator can still technically access your data while you are logged in. If you lose both your passphrase and your recovery key, your data cannot be recovered."
+    },
+    "recovery": {
+      "title": "Save your recovery key",
+      "intro": "This is the only time this key will be shown. Store it somewhere safe: it is the only way back in if you forget your passphrase.",
+      "saved": "I saved this recovery key",
+      "continue": "Continue to my decks",
+      "copy": "Copy recovery key"
+    },
+    "errors": {
+      "mismatch": "The passphrases do not match.",
+      "short": "Use at least 10 characters for your passphrase.",
+      "savedRequired": "Confirm that you have saved your recovery key.",
+      "generic": "That didn’t work. Please try again."
+    }
   }
 }

@@ -27,6 +27,9 @@ export async function unwrap<T>(
 ): Promise<T> {
   const response = await res;
   if (response.ok) return response.json();
+  if (response.status === 401) {
+    window.dispatchEvent(new CustomEvent('auth:locked'));
+  }
   let raw: unknown = null;
   try { raw = await response.json(); } catch { /* body may be empty */ }
   const b = (raw && typeof raw === 'object' ? raw : {}) as Partial<ApiErrorBody>;
@@ -47,6 +50,37 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong'): s
   return fallback;
 }
 
+/* ---- Auth / account types (mirrored by api.mock.ts) ------------------------ */
+
+export interface AuthUser { username: string; is_admin: boolean }
+export interface AuthStatus {
+  status: 'setup' | 'locked' | 'unlocked';
+  user: AuthUser | null;
+}
+export interface AuthResult { ok: true; user: AuthUser }
+export interface SetupResult extends AuthResult { recovery_key: string }
+export interface RecoverResult { ok: true; user: { username: string } }
+export interface AdminUser {
+  id: number; username: string; is_admin: number | boolean;
+  disabled_at: string | null; created_at: string;
+}
+export interface AdminInvite {
+  id: number; created_by: number; expires_at: string;
+  used_by: number | null; used_at: string | null; created_at: string;
+}
+export interface InviteResult { ok: true; code: string; expires_at: string }
+export interface AgentToken {
+  token_id: string; mode: 'read' | 'write'; label: string;
+  created_at: string; last_used_at: string | null; revoked_at: string | null;
+}
+export interface AgentTokenResult {
+  ok: true; token: string; token_id: string; label: string;
+  mode: 'read' | 'write'; created_at: string;
+}
+// Plaintext on purpose: the export endpoint deliberately returns a portable,
+// unencrypted bundle. Any decrypted study data is in JS memory only until download.
+export type ExportBundle = Record<string, unknown>;
+
 function normalizeCard(c: CardRow & { tags?: unknown; due_at?: string; ignored?: number | boolean }): CardDto {
   let tags: unknown = c.tags;
   if (!Array.isArray(tags)) {
@@ -61,6 +95,24 @@ function normalizeCard(c: CardRow & { tags?: unknown; due_at?: string; ignored?:
 }
 
 export interface Api {
+  auth: {
+    status(): Promise<AuthStatus>;
+    setup(input: { username: string; passphrase: string }): Promise<SetupResult>;
+    login(input: { username: string; passphrase: string }): Promise<AuthResult>;
+    logout(): Promise<OkResponse>;
+    recover(input: { recovery_key: string; passphrase: string }): Promise<RecoverResult>;
+    register(input: { invite_code: string; username: string; passphrase: string }): Promise<AuthResult>;
+    changePassphrase(input: { current_passphrase: string; new_passphrase: string }): Promise<OkResponse>;
+  };
+  adminUsers(): Promise<{ users: AdminUser[] }>;
+  adminInvites(): Promise<{ invites: AdminInvite[] }>;
+  createInvite(ttlSeconds?: number): Promise<InviteResult>;
+  setUserDisabled(id: number, disabled: boolean): Promise<OkResponse>;
+  deleteUser(id: number): Promise<OkResponse>;
+  agentTokens(): Promise<{ tokens: AgentToken[] }>;
+  createAgentToken(label: string, readOnly: boolean): Promise<AgentTokenResult>;
+  revokeAgentToken(id: string): Promise<OkResponse>;
+  exportBundle(): Promise<ExportBundle>;
   decks(): Promise<{ decks: DeckSummary[] }>;
   createDeck(input: DeckCreateInput): Promise<{ ok: true; deck: { id: number; name: string; description: string } }>;
   deleteDeck(id: DeckRef, confirmName: string, deleteQuizzes?: boolean): Promise<OkResponse>;
@@ -97,6 +149,50 @@ export interface Api {
 }
 
 const real: Api = {
+  auth: {
+    async status() {
+      const res = await unwrap<{ status: string; user: AuthUser | null }>(rpc.api.auth.status.$get());
+      return { status: res.status as AuthStatus['status'], user: res.user };
+    },
+    setup: (input) => unwrap(rpc.api.auth.setup.$post({ json: input })),
+    login: (input) => unwrap(rpc.api.auth.login.$post({ json: input })),
+    logout: () => unwrap(rpc.api.auth.logout.$post()),
+    recover: (input) => unwrap(rpc.api.auth.recover.$post({ json: input })),
+    register: (input) => unwrap(rpc.api.auth.register.$post({ json: input })),
+    changePassphrase: (input) => unwrap(rpc.api.auth['change-passphrase'].$post({ json: input })),
+  },
+
+  adminUsers: () => unwrap(rpc.api.admin.users.$get()),
+  adminInvites: () => unwrap(rpc.api.admin.invites.$get()),
+  async createInvite(ttlSeconds) {
+    // The current server returns `expiresAt`; accept the documented
+    // `expires_at` spelling too so the UI works with either revision.
+    const res = await unwrap<{
+      ok: true; code: string; expires_at?: string; expiresAt?: string;
+    }>(rpc.api.admin.invites.$post({ json: ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds } }));
+    return { ok: true as const, code: res.code, expires_at: res.expires_at ?? res.expiresAt ?? '' };
+  },
+  setUserDisabled: (id, disabled) => unwrap(rpc.api.admin.users[':id'].$patch({
+    param: { id: String(id) }, json: { disabled },
+  })),
+  deleteUser: (id) => unwrap(rpc.api.admin.users[':id'].$delete({ param: { id: String(id) } })),
+
+  agentTokens: () => unwrap(rpc.api['agent-tokens'].$get()),
+  async createAgentToken(label, readOnly) {
+    const res = await unwrap<{
+      ok: true; token: string; token_id?: string; tokenId?: string;
+      label: string; mode: 'read' | 'write'; created_at?: string; createdAt?: string;
+    }>(rpc.api['agent-tokens'].$post({ json: { label, read_only: readOnly } }));
+    return {
+      ok: true as const, token: res.token,
+      token_id: res.token_id ?? res.tokenId ?? '',
+      label: res.label, mode: res.mode,
+      created_at: res.created_at ?? res.createdAt ?? '',
+    };
+  },
+  revokeAgentToken: (id) => unwrap(rpc.api['agent-tokens'][':id'].$delete({ param: { id } })),
+  exportBundle: () => unwrap(rpc.api.export.$get()),
+
   decks: () => unwrap(rpc.api.decks.$get()),
   createDeck: (input) => unwrap(rpc.api.decks.$post({
     json: { name: input.name, description: input.description ?? '' },
