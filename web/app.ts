@@ -246,12 +246,19 @@ function updateAccountUI(): void {
   slot.querySelector('#lock')?.addEventListener('click', () => { void lockNow(); });
 }
 
+function closeOpenDialogs(): void {
+  document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((el) => {
+    el.dispatchEvent(new Event('cancel'));
+  });
+}
+
 async function lockNow(): Promise<void> {
   try { await api.auth.logout(); } catch { /* lock locally even if the request fails */ }
   unlocked = false;
   authUser = null;
   stopLive();
   clearSessionState();
+  closeOpenDialogs();
   updateAccountUI();
   openGate('login');
 }
@@ -1122,9 +1129,7 @@ window.addEventListener('auth:locked', () => {
   clearSessionState();
   updateAccountUI();
   // Close any open account dialogs; their data is stale once locked.
-  document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((el) => {
-    el.dispatchEvent(new Event('cancel'));
-  });
+  closeOpenDialogs();
   // Keep an already-open gate form (and its error message) intact.
   if (!gateEl) openGate('login');
 });
