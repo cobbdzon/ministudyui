@@ -76,6 +76,16 @@ export function migrateDb(db: Database): void {
       db.exec('ALTER TABLE attempts ADD COLUMN question_order_json TEXT');
     db.exec('PRAGMA user_version = 5');
   }
+  if (v < 6) {
+    // Encrypted names need a blind index for uniqueness. Fresh v6 databases
+    // already have the column and UNIQUE constraint from schema.sql.
+    const deckCols = db.prepare('PRAGMA table_info(decks)').all() as Array<{ name: string }>;
+    if (!deckCols.some((c) => c.name === 'name_key')) {
+      db.exec('ALTER TABLE decks ADD COLUMN name_key TEXT');
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_name_key_v6 ON decks(name_key)');
+    db.exec('PRAGMA user_version = 6');
+  }
 }
 
 export function migrate(): void {
@@ -101,6 +111,31 @@ export function all<T>(sql: string, params: SQLQueryBindings[] = []): T[] {
 }
 export function count(sql: string, params: SQLQueryBindings[] = []): number {
   return Number(get<{ n: number }>(sql, params)?.n ?? 0);
+}
+
+// DB-agnostic variants for the separate auth.db. SQL stays behind this box.
+export function txOn<T>(db: Database, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE');
+  try { const r = fn(); db.exec('COMMIT'); return r; }
+  catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+export async function txOnAsync<T>(db: Database, fn: () => Promise<T>): Promise<T> {
+  db.exec('BEGIN IMMEDIATE');
+  try { const r = await fn(); db.exec('COMMIT'); return r; }
+  catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+export function runOn(db: Database, sql: string, params: SQLQueryBindings[] = []): RunResult {
+  const r: Changes = db.prepare(sql).run(...params);
+  return { changes: r.changes, lastInsertRowid: Number(r.lastInsertRowid ?? 0) };
+}
+export function getOn<T>(db: Database, sql: string, params: SQLQueryBindings[] = []): T | null {
+  return (db.prepare(sql).get(...params) as T | undefined) ?? null;
+}
+export function allOn<T>(db: Database, sql: string, params: SQLQueryBindings[] = []): T[] {
+  return db.prepare(sql).all(...params) as T[];
+}
+export function countOn(db: Database, sql: string, params: SQLQueryBindings[] = []): number {
+  return Number(getOn<{ n: number }>(db, sql, params)?.n ?? 0);
 }
 
 export function close(): void {

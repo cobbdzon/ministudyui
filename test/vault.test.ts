@@ -61,8 +61,12 @@ describe('vault primitives', () => {
     expect(() => inScope(() => vault.open('decks', 'name', flip(ct, 15)))).toThrow();
     expect(() => inScope(() => vault.open('decks', 'name', flip(ct, Buffer.from(ct.slice(5), 'base64url').length - 1)))).toThrow();
     expect(() => inScope(() => vault.open('decks', 'name', flip(ct, 2)))).toThrow();
-    // Moving the ciphertext to a different column must fail (AAD binding).
+    // Moving the ciphertext to a different column must fail (AAD binding),
+    // including a different column in the SAME table.
     expect(() => inScope(() => vault.open('cards', 'front', ct))).toThrow();
+    const sameTable = inScope(() => vault.seal('cards', 'front', 'front text'))!;
+    expect(() => inScope(() => vault.open('cards', 'back', sameTable))).toThrow();
+    expect(inScope(() => vault.open('cards', 'front', sameTable))).toBe('front text');
     expect(vault.openRaw(KEYS.enc, 'decks.name', ct.slice(5))).toBeNull(); // malformed (no prefix) too
   });
 

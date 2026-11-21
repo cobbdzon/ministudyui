@@ -61,6 +61,11 @@ export function blindIndex(idxKey: Uint8Array, casefoldedValue: string): string 
   return Buffer.from(hmacSha256(idxKey, Buffer.from(casefoldedValue, 'utf8'))).toString('hex');
 }
 
+/** Blind index using the request's idx key. Callers pass an already-casefolded value. */
+export function indexValue(casefoldedValue: string): string {
+  return blindIndex(scope.current().keys.idx, casefoldedValue);
+}
+
 export function deriveSubkeys(dek: Uint8Array): { enc: Uint8Array; idx: Uint8Array } {
   const salt = new Uint8Array(32);
   return {
