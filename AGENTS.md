@@ -23,6 +23,51 @@ Storage: `<DATA_DIR>/auth.db` (users, invites, key wraps, agent tokens — own s
 isolation comes from separate files. Username uniqueness, one-quiz-per-deck, `ui_context`
 single row, `undo`, `restart` and the changefeed cursor are all per-user automatically.
 
+### Storage map
+
+```mermaid
+erDiagram
+    USERS ||--o{ KEY_WRAPS : "wrapped DEK"
+    USERS ||--o{ AGENT_TOKENS : "wrapped subkeys"
+    USERS ||--o{ INVITES : creates
+    USERS ||--|| USER_DB : "users/<id>.db"
+    USER_DB {
+      int user_version "6"
+    }
+```
+
+### Web request to a box
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant H as Hono /api
+    participant S as session.ts
+    participant P as scope (ALS)
+    participant X as box + vault
+    B->>H: request + ms_session cookie
+    H->>S: resolve session, check disabled
+    H->>P: scope.run({userId, db, keys}, next)
+    P->>X: box function
+    X->>X: vault.seal/open with request keys
+    X-->>B: decrypted JSON
+```
+
+### MCP request
+
+```mermaid
+sequenceDiagram
+    participant C as MCP client
+    participant M as /mcp
+    participant A as auth box
+    participant P as scope (ALS)
+    C->>M: POST + Authorization: Bearer
+    M->>A: unlockWithAgentToken
+    A-->>M: {userId, mode, keys}
+    M->>P: scope.run(ctx, handleRequest)
+    P-->>C: JSON-RPC result
+```
+
 ## Commands (Bun only)
 
 ```sh
