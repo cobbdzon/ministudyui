@@ -576,39 +576,87 @@ function wireGateForm(form: HTMLFormElement, submit: GateSubmit): void {
   });
 }
 
-function copyButton(label: string, targetId: string): string {
-  return `<span class="copy-group">
-    <button class="copy-btn" type="button" data-copy-target="${escapeHtml(targetId)}"
-      aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${icon('content_copy')}</button>
+function copyButton(label: string, targetId: string, labeled = false): string {
+  const target = escapeHtml(targetId);
+  const text = escapeHtml(label);
+  const name = labeled ? '' : ` aria-label="${text}" title="${text}"`;
+  return `<span class="copy-group${labeled ? ' copy-group--labeled' : ''}">
+    <button class="copy-btn${labeled ? ' copy-btn--labeled' : ''}" type="button"
+      command="--copy" commandfor="${target}"${name}>
+      <span class="copy-btn__icon">${icon('content_copy')}</span>
+      ${labeled ? `<span class="copy-btn__label">${text}</span>` : ''}
+    </button>
     <span class="copy-feedback" role="status" aria-live="polite"></span>
   </span>`;
 }
 
-function wireCopy(root: ParentNode): void {
-  root.querySelectorAll<HTMLButtonElement>('[data-copy-target]').forEach((button) => {
-    if (button.dataset.copyWired === 'true') return;
-    button.dataset.copyWired = 'true';
-    button.addEventListener('click', async () => {
-      const target = document.getElementById(button.dataset.copyTarget ?? '');
-      const text = target?.textContent?.trim() ?? '';
-      const bubble = button.parentElement?.querySelector<HTMLElement>('.copy-feedback');
-      let message = 'Copied';
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        message = 'Copy failed';
-      }
-      if (!bubble) return;
-      if (bubble.dataset.timer) clearTimeout(Number(bubble.dataset.timer));
-      bubble.textContent = '';
-      requestAnimationFrame(() => { bubble.textContent = message; });
-      bubble.classList.add('is-visible');
-      bubble.dataset.timer = String(setTimeout(() => {
-        bubble.classList.remove('is-visible');
-        bubble.textContent = '';
-        bubble.dataset.timer = '';
-      }, 2000));
-    });
+const copyTimers = new WeakMap<HTMLElement, number>();
+const copyFrames = new WeakMap<HTMLElement, number>();
+let lastCopyMessage = '';
+
+async function writeToClipboard(button: HTMLElement, target: HTMLElement): Promise<void> {
+  const text = target.matches('input, textarea')
+    ? (target as HTMLInputElement | HTMLTextAreaElement).value
+    : target.innerText.trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    reportCopy(button, true);
+  } catch {
+    reportCopy(button, false);
+  }
+}
+
+function reportCopy(button: HTMLElement, ok: boolean): void {
+  const bubble = button.parentElement?.querySelector<HTMLElement>('.copy-feedback');
+  const iconEl = button.querySelector<HTMLElement>('.copy-btn__icon');
+  clearTimeout(copyTimers.get(button));
+  cancelAnimationFrame(copyFrames.get(button) ?? 0);
+  button.removeAttribute('data-copied');
+  button.removeAttribute('data-failed');
+  let message = ok ? 'Copied' : 'Copy failed';
+  if (message === lastCopyMessage) message += '\u00a0';
+  lastCopyMessage = message;
+  if (bubble) {
+    bubble.textContent = '';
+    bubble.classList.remove('is-visible');
+    void bubble.offsetWidth;
+  }
+  void button.offsetWidth;
+  button.setAttribute(ok ? 'data-copied' : 'data-failed', '');
+  if (iconEl) iconEl.innerHTML = icon(ok ? 'check' : 'content_copy');
+  if (!bubble) return;
+  copyFrames.set(button, requestAnimationFrame(() => {
+    bubble.textContent = message;
+    bubble.classList.add('is-visible');
+    copyFrames.delete(button);
+  }));
+  copyTimers.set(button, window.setTimeout(() => {
+    button.removeAttribute('data-copied');
+    button.removeAttribute('data-failed');
+    if (iconEl) iconEl.innerHTML = icon('content_copy');
+    bubble.classList.remove('is-visible');
+    bubble.textContent = '';
+    copyTimers.delete(button);
+  }, 2000));
+}
+
+function installCopyCommands(): void {
+  type CopyCommand = Event & { command: string; source: HTMLElement; target: Element | null };
+  if ('CommandEvent' in window) {
+    document.addEventListener('command', (event) => {
+      const cmd = event as CopyCommand;
+      if (cmd.command !== '--copy' || !(cmd.source instanceof HTMLElement)) return;
+      if (cmd.target instanceof HTMLElement) void writeToClipboard(cmd.source, cmd.target);
+    }, true);
+    return;
+  }
+  document.addEventListener('click', (event) => {
+    const origin = event.target instanceof Element ? event.target : null;
+    const button = origin?.closest<HTMLButtonElement>('button[command="--copy"]');
+    if (!button) return;
+    const target = document.getElementById(button.getAttribute('commandfor') ?? '');
+    if (target) void writeToClipboard(button, target);
   });
 }
 
@@ -720,7 +768,6 @@ function renderGate(screen: GateScreen): void {
       if (user) unlock(user);
       else renderGate('login');
     });
-    wireCopy(gateEl);
     gateEl.querySelector<HTMLElement>('#gate-saved')?.focus();
     return;
   }
@@ -955,7 +1002,6 @@ async function openAgentDialog(): Promise<void> {
               <pre class="auth-code" id="agent-config">${escapeHtml(agentConfig(created.token))}</pre>
               ${copyButton('Copy OpenCode config', 'agent-config')}
             </div>`;
-          wireCopy(root);
           toast('Token created', { icon: 'check_circle' });
           await render();
         } catch (err) {
@@ -1110,11 +1156,21 @@ async function openAdminDialog(): Promise<void> {
           const invite = await api.createInvite(ttl);
           const link = `${location.origin}${location.pathname}#/register?invite=${encodeURIComponent(invite.code)}`;
           root.querySelector<HTMLElement>('#admin-invite')!.innerHTML = `
-            <div class="auth-secret">
-              <code class="auth-secret__value" id="admin-invite-link">${escapeHtml(link)}</code>
-              ${copyButton('Copy invite link', 'admin-invite-link')}
+            <div class="invite-result">
+              <div class="invite-result__head">
+                <span class="invite-result__icon">${icon('key')}</span>
+                <div>
+                  <h4 class="invite-result__title">Invite link ready</h4>
+                  <p class="invite-result__meta">Single use · Expires ${escapeHtml(
+                    new Date(invite.expires_at).toLocaleString(),
+                  )}</p>
+                </div>
+              </div>
+              <code class="invite-result__value" id="admin-invite-link">${escapeHtml(link)}</code>
+              <div class="invite-result__foot">
+                ${copyButton('Copy invite link', 'admin-invite-link', true)}
+              </div>
             </div>`;
-          wireCopy(root);
           toast('Invite link created', { icon: 'check_circle' });
           await render();
         } catch (err) {
@@ -1384,6 +1440,7 @@ document.getElementById('import')?.addEventListener('click', () => importView.op
 document.getElementById('lock')?.addEventListener('click', () => { void lockNow(); });
 document.getElementById('more')?.addEventListener('click', openMoreSheet);
 wireAccountMenuSurface();
+installCopyCommands();
 updateAccountUI();
 
 document.addEventListener('keydown', (e) => {

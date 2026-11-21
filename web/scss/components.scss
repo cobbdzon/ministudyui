@@ -961,13 +961,17 @@ kbd {
   vertical-align: middle;
 }
 
+.copy-group--labeled {
+  position: relative;
+}
+
 .copy-btn {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
-  min-width: 24px;
-  min-height: 24px;
+  min-inline-size: 24px;
+  min-block-size: 24px;
   padding: 2px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
@@ -983,9 +987,48 @@ kbd {
   color: var(--md-sys-color-on-secondary-container);
 }
 
+.copy-btn--labeled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: auto;
+  height: 40px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font: var(--md-sys-typescale-label-large);
+}
+
+.copy-btn--labeled:hover,
+.copy-btn--labeled:focus-visible {
+  border-color: transparent;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.copy-btn__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
 .copy-btn .icon {
   width: 18px;
   height: 18px;
+}
+
+.copy-btn[data-copied] {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.copy-btn[data-failed] {
+  border-color: var(--md-sys-color-error);
+  color: var(--md-sys-color-error);
 }
 
 /* Kept in the layout with opacity so announcements don't shift the view. */
@@ -994,9 +1037,43 @@ kbd {
   font: var(--md-sys-typescale-label-small);
   color: var(--md-sys-color-primary);
   opacity: 0;
-  transition: opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+  transform: translateY(2px);
+  transition:
+    opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
 }
 
 .copy-feedback.is-visible {
   opacity: 1;
+  transform: none;
+}
+
+.copy-btn[data-failed] + .copy-feedback {
+  color: var(--md-sys-color-error);
+}
+
+/* The status sits beside the button without taking layout space, so the button
+   can stay at the end of its row. */
+.copy-group--labeled .copy-feedback {
+  position: absolute;
+  right: calc(100% + var(--space-2));
+  top: 50%;
+  min-width: 0;
+  transform: translateY(calc(-50% + 2px));
+}
+
+.copy-group--labeled .copy-feedback.is-visible {
+  transform: translateY(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copy-feedback {
+    transform: none;
+    transition: opacity var(--md-sys-motion-duration-short) linear;
+  }
+
+  .copy-group--labeled .copy-feedback,
+  .copy-group--labeled .copy-feedback.is-visible {
+    transform: translateY(-50%);
+  }
 }
