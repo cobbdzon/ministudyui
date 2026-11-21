@@ -1,14 +1,10 @@
-// Production seed: first-initialization only. Creates the data directory and
-// migrates the SQLite schema, but inserts no data. Safe to run on every boot.
-import { join } from 'node:path';
-import * as store from '../src/boxes/store/index.js';
+// First-initialization seed: create DATA_DIR/auth.db with the auth schema and
+// no users. Creates no study data; the first user is created by setup/CLI/migrate.
+import * as auth from '../src/boxes/auth/index.js';
 import { dataDir, ensureDataDir } from '../src/boxes/paths.js';
 
-// Temporary legacy file until the auth DB / per-user DBs land in Phase 7.
 ensureDataDir();
-const file = join(dataDir(), 'ministudy.db');
-store.open(file);
-store.migrate();
-store.close();
-
-console.log(`seed: ${file} is ready (no data added).`);
+auth.open();
+auth.migrate();
+auth.close();
+console.log(`seed: ${dataDir()}/auth.db is ready (no users added).`);

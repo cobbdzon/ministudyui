@@ -3,7 +3,6 @@
     "name": "answer_grade",
     "description": "Grade an answer",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "answer_id": {
@@ -26,14 +25,13 @@
         "points",
         "feedback"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "attempt_list",
     "description": "List attempts",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "status": {
@@ -56,17 +54,13 @@
           "maximum": 100
         }
       },
-      "required": [
-        "limit"
-      ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "attempts_pending_grading",
     "description": "Pending grading",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "limit": {
@@ -76,17 +70,13 @@
           "maximum": 50
         }
       },
-      "required": [
-        "limit"
-      ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "card_add",
     "description": "Add cards",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -133,8 +123,7 @@
             "required": [
               "front",
               "back"
-            ],
-            "additionalProperties": false
+            ]
           }
         }
       },
@@ -142,14 +131,13 @@
         "deck",
         "cards"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "card_delete",
     "description": "Delete cards",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "card_ids": {
@@ -166,14 +154,13 @@
       "required": [
         "card_ids"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "card_schedule",
     "description": "Override a card due time (shift by minutes and/or make due now) and toggle whether it is ignored in reviews",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "card_id": {
@@ -196,14 +183,13 @@
       "required": [
         "card_id"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "card_search",
     "description": "Search cards",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "query": {
@@ -248,18 +234,13 @@
           "maximum": 9007199254740991
         }
       },
-      "required": [
-        "limit",
-        "offset"
-      ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "card_update",
     "description": "Update a card",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "card_id": {
@@ -304,24 +285,22 @@
       "required": [
         "card_id"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "current_context",
     "description": "What the user is currently viewing in the web UI: the flashcard in review or the quiz question on screen, with its full content, answer and their own saved answer. Use this to answer questions about the current card/question. context is null when nothing is in focus.",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {},
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "deck_create",
     "description": "Create a deck",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "name": {
@@ -337,14 +316,13 @@
       "required": [
         "name"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "deck_delete",
     "description": "Delete a deck",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -369,19 +347,22 @@
         "deck",
         "confirm_name"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "deck_list",
     "description": "List decks",
-    "inputSchema": {}
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
   },
   {
     "name": "deck_update",
     "description": "Rename a deck and/or edit its description (provide at least one)",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -411,14 +392,13 @@
       "required": [
         "deck"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "latex_validate",
     "description": "Validate LaTeX",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "sources": {
@@ -434,14 +414,13 @@
       "required": [
         "sources"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "question_delete",
     "description": "Delete questions by id and renumber the remaining ones",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "question_ids": {
@@ -460,17 +439,15 @@
         }
       },
       "required": [
-        "question_ids",
-        "renumber"
+        "question_ids"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "question_update",
     "description": "Edit existing questions in bulk by id; only provided fields change",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "questions": {
@@ -534,8 +511,7 @@
                   "required": [
                     "id",
                     "text"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "correct": {
@@ -582,22 +558,20 @@
             },
             "required": [
               "question_id"
-            ],
-            "additionalProperties": false
+            ]
           }
         }
       },
       "required": [
         "questions"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_add_questions",
     "description": "Add questions",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "quiz_id": {
@@ -652,8 +626,7 @@
                       "required": [
                         "id",
                         "text"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "correct": {
@@ -665,8 +638,7 @@
                   "prompt",
                   "choices",
                   "correct"
-                ],
-                "additionalProperties": false
+                ]
               },
               {
                 "type": "object",
@@ -709,8 +681,7 @@
                       "required": [
                         "id",
                         "text"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "correct": {
@@ -726,8 +697,7 @@
                   "prompt",
                   "choices",
                   "correct"
-                ],
-                "additionalProperties": false
+                ]
               },
               {
                 "type": "object",
@@ -774,11 +744,8 @@
                 "required": [
                   "type",
                   "prompt",
-                  "value",
-                  "tolerance",
-                  "tolerance_type"
-                ],
-                "additionalProperties": false
+                  "value"
+                ]
               },
               {
                 "type": "object",
@@ -818,8 +785,7 @@
                   "type",
                   "prompt",
                   "reference"
-                ],
-                "additionalProperties": false
+                ]
               }
             ]
           }
@@ -829,14 +795,13 @@
         "quiz_id",
         "questions"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_create",
     "description": "Create quiz",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "title": {
@@ -912,8 +877,7 @@
                       "required": [
                         "id",
                         "text"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "correct": {
@@ -925,8 +889,7 @@
                   "prompt",
                   "choices",
                   "correct"
-                ],
-                "additionalProperties": false
+                ]
               },
               {
                 "type": "object",
@@ -969,8 +932,7 @@
                       "required": [
                         "id",
                         "text"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "correct": {
@@ -986,8 +948,7 @@
                   "prompt",
                   "choices",
                   "correct"
-                ],
-                "additionalProperties": false
+                ]
               },
               {
                 "type": "object",
@@ -1034,11 +995,8 @@
                 "required": [
                   "type",
                   "prompt",
-                  "value",
-                  "tolerance",
-                  "tolerance_type"
-                ],
-                "additionalProperties": false
+                  "value"
+                ]
               },
               {
                 "type": "object",
@@ -1078,8 +1036,7 @@
                   "type",
                   "prompt",
                   "reference"
-                ],
-                "additionalProperties": false
+                ]
               }
             ]
           }
@@ -1089,14 +1046,13 @@
         "title",
         "questions"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_delete",
     "description": "Delete a quiz and its questions",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "quiz_id": {
@@ -1112,14 +1068,13 @@
         "quiz_id",
         "confirm_title"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_get",
     "description": "Get quiz",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "quiz_id": {
@@ -1133,17 +1088,15 @@
         }
       },
       "required": [
-        "quiz_id",
-        "include_answers"
+        "quiz_id"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_list",
     "description": "List quizzes",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -1167,17 +1120,13 @@
           "maximum": 100
         }
       },
-      "required": [
-        "limit"
-      ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_outline",
     "description": "List question ids, positions and types of a quiz without loading prompts or answers",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "quiz_id": {
@@ -1189,14 +1138,13 @@
       "required": [
         "quiz_id"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "quiz_update",
     "description": "Edit a quiz title, description, deck, source or shuffle setting (only provided fields change)",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "quiz_id": {
@@ -1242,14 +1190,13 @@
       "required": [
         "quiz_id"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "study_next_due",
     "description": "Next due cards",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -1274,17 +1221,15 @@
         }
       },
       "required": [
-        "deck",
-        "limit"
+        "deck"
       ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
     "name": "study_stats",
     "description": "Study stats",
     "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "deck": {
@@ -1308,10 +1253,7 @@
           "maximum": 365
         }
       },
-      "required": [
-        "days"
-      ],
-      "additionalProperties": false
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   }
 ]

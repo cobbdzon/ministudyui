@@ -2,22 +2,31 @@
 // Safe to re-run: it does nothing once the database already has decks.
 // For a real, empty database use `bun run seed` instead.
 import type { SQLQueryBindings } from 'bun:sqlite';
-import { join } from 'node:path';
 import * as store from '../src/boxes/store/index.js';
 import * as scope from '../src/boxes/scope/index.js';
-import { dataDir, ensureDataDir } from '../src/boxes/paths.js';
+import * as vault from '../src/boxes/vault/index.js';
+import * as auth from '../src/boxes/auth/index.js';
+import * as userdb from '../src/boxes/userdb/index.js';
+import { dataDir, ensureDataDir, userDbPath } from '../src/boxes/paths.js';
 
-// Temporary legacy file + bootstrap scope until Phase 7 rewrites seeds for tenancy.
+// Demo user with its own per-user DB. The default passphrase is INSECURE and
+// only for local demos; set DEMO_PASSPHRASE to override it.
 ensureDataDir();
-const legacyFile = join(dataDir(), 'ministudy.db');
-const db = store.open(legacyFile);
-store.migrate();
-scope.installTestFallback(scope.devContext(db));
+auth.open();
+auth.migrate();
+const passphrase = process.env.DEMO_PASSPHRASE || 'insecure-demo-passphrase';
+const cost = { kdfCost: { N: 16, r: 8, p: 1 } };
+let demo = auth.listUsers().find((u) => u.username === 'demo');
+if (!demo) demo = (await auth.createUser({ username: 'demo', passphrase, admin: !auth.hasUsers(), ...cost })).user;
+const unlocked = await auth.login('demo', passphrase, 'seed-demo', cost);
+const db = userdb.open(demo.id);
+const scoped = <T>(fn: () => T): T => scope.run({ userId: demo.id, db, keys: unlocked.keys }, fn);
 
-const existing = store.get<{ n: number }>('SELECT COUNT(*) AS n FROM decks')?.n ?? 0;
+const existing = scoped(() => store.get<{ n: number }>('SELECT COUNT(*) AS n FROM decks')?.n ?? 0);
 if (existing > 0) {
-  console.log(`seed: ${legacyFile} already has ${existing} deck(s); nothing to do.`);
-  store.close();
+  console.log(`seed: ${userDbPath(demo.id)} already has ${existing} deck(s); nothing to do.`);
+  userdb.release(demo.id);
+  auth.close();
   process.exit(0);
 }
 
@@ -111,16 +120,18 @@ const answers: Array<[number, number, string, string, number | null, number | nu
 
 const reviewSeries = [6, 9, 0, 12, 7, 0, 0, 5, 8, 11, 4, 0, 13, 6, 0, 7, 10, 9, 0, 3, 8, 0, 14, 11, 5, 0, 6, 9, 7, 12];
 
-store.tx(() => {
+scoped(() => store.tx(() => {
   const run = (sql: string, params: SQLQueryBindings[] = []) => store.run(sql, params);
+  const S = (t: string, col: string, v: string) => vault.seal(t, col, v)!;
 
   for (const d of decks) {
-    run('INSERT INTO decks (id, name, description, created_at) VALUES (?,?,?,?)', [d.id, d.name, d.description, d.created_at]);
+    run('INSERT INTO decks (id, name, name_key, description, created_at) VALUES (?,?,?,?,?)',
+      [d.id, S('decks', 'name', d.name), vault.indexValue(d.name.toLowerCase()), S('decks', 'description', d.description), d.created_at]);
   }
 
   for (const [id, deckId, front, back, tags, source, reps, due] of cards) {
     run('INSERT INTO cards (id, deck_id, front, back, tags_json, source, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)',
-      [id, deckId, front, back, JSON.stringify(tags), source, iso(10), iso(2)]);
+      [id, deckId, S('cards', 'front', front), S('cards', 'back', back), S('cards', 'tags_json', JSON.stringify(tags)), source, iso(10), iso(2)]);
     // The insert trigger created a default card_state; give it a realistic history.
     const interval = reps === 0 ? 0 : reps === 1 ? 1 : reps === 2 ? 6 : reps === 3 ? 15 : 30;
     run('UPDATE card_state SET ease=?, interval_days=?, reps=?, lapses=?, due_at=?, last_reviewed_at=? WHERE card_id=?',
@@ -141,12 +152,14 @@ store.tx(() => {
 
   for (const q of quizzes) {
     run('INSERT INTO quizzes (id, deck_id, title, description, source, created_at) VALUES (?,?,?,?,?,?)',
-      [q.id, q.deck_id, q.title, q.description, q.source, q.created_at]);
+      [q.id, q.deck_id, S('quizzes', 'title', q.title), S('quizzes', 'description', q.description), q.source, q.created_at]);
   }
 
   for (const [id, quizId, position, type, prompt, choices, answer, explanation, points] of questions) {
     run('INSERT INTO questions (id, quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?,?)',
-      [id, quizId, position, type, prompt, choices ? JSON.stringify(choices) : null, JSON.stringify(answer), explanation, points]);
+      [id, quizId, position, type, S('questions', 'prompt', prompt),
+        choices ? S('questions', 'choices_json', JSON.stringify(choices)) : null,
+        S('questions', 'answer_json', JSON.stringify(answer)), S('questions', 'explanation', explanation), points]);
   }
 
   for (const [id, quizId, startedAt, submittedAt, status, score, maxScore] of attempts) {
@@ -157,12 +170,14 @@ store.tx(() => {
   let answerId = 0;
   for (const [attemptId, questionId, response, status, correct, points, feedback, gradedBy, gradedAt] of answers) {
     run('INSERT INTO answers (id, attempt_id, question_id, response, grading_status, is_correct, points_awarded, feedback, graded_by, graded_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      [++answerId, attemptId, questionId, response, status, correct, points, feedback, gradedBy, gradedAt]);
+      [++answerId, attemptId, questionId, S('answers', 'response', response), status, correct, points,
+        S('answers', 'feedback', feedback), gradedBy, gradedAt]);
   }
 
   // Change records are a live feed for the UI; seed data is not a live change.
   run('DELETE FROM changes');
-});
+}));
 
-store.close();
-console.log(`seed: ${legacyFile} — ${decks.length} decks, ${cards.length} cards, ${quizzes.length} quizzes, ${attempts.length} attempts.`);
+userdb.release(demo.id);
+auth.close();
+console.log(`seed: ${userDbPath(demo.id)} — ${decks.length} decks, ${cards.length} cards, ${quizzes.length} quizzes, ${attempts.length} attempts.`);

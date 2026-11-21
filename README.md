@@ -1,206 +1,301 @@
 # ministudyui
 
-A quiet, local-first study app for decks, spaced repetition (SRS), quizzes,
-attempts, grading, and stats. It ships three entry points:
+A quiet study app for decks, spaced repetition, quizzes, attempts, grading and stats —
+now with **per-user encryption**, invite-only multi-user accounts, and MCP over Streamable
+HTTP. One Bun process serves the web UI/API and `/mcp`; all domain logic lives in shared
+"boxes". All state lives under `DATA_DIR` (default `<repo>/data`).
 
-- **Web UI + HTTP API** (`src/http/server.ts`) — Bun HTTP server on
-  `127.0.0.1:3000`.
-- **MCP server** (`src/mcp/stdio.ts`) — stdio transport exposing the same
-  library as MCP tools.
-- **Shared core** (`src/boxes/*`) — decks, cards, SRS, quizzes, attempts,
-  grading, stats, LaTeX validation.
-
-All data lives in a local SQLite database (`data/ministudy.db`).
-
-## Prerequisites
-
-- [Bun](https://bun.sh) `>= 1.0` (`bun --version`)
-- Node is not required; Sass is installed as a dev dependency.
-
-## Install
+## Quick start (owner)
 
 ```sh
+git switch encrypted-multiuser
 bun install
-bun run seed
+bun run seed                    # creates <DATA_DIR>/auth.db, no users
+bun run migrate:legacy -- --user <your-name>   # prompts for a passphrase; prints recovery key ONCE
+bun run start                   # http://127.0.0.1:3000
 ```
 
-`data/` is gitignored. `bun run seed` creates it and migrates the SQLite schema
-without adding any data — use this for a real/initial setup. It only creates
-what's missing, so it's safe to run on every boot and won't touch existing data.
+Open the URL. On first boot the Setup screen also offers to create the first account and
+shows the recovery key once. The first user is the admin. If you have no legacy data, use
+the Setup screen (or `bun run user create --user <name>`) instead of `migrate:legacy`.
 
-For local exploration, `bun run seed:demo` fills the database with sample decks,
-cards (with review history), quizzes, and attempts. It skips a database that
-already has decks, so re-running it is harmless.
+**Save the recovery key offline.** It is the only way back if you lose your passphrase.
+Losing both means your data cannot be recovered. The registration screen says this plainly.
+
+### What is stored
+
+```mermaid
+erDiagram
+    USERS ||--o{ KEY_WRAPS : owns
+    USERS ||--o{ AGENT_TOKENS : owns
+    USERS ||--o{ INVITES : creates
+    USERS ||--|| USER_DB : has
+    USERS {
+      int id PK
+      string username
+      bool is_admin
+      string recovery_id
+      string disabled_at
+    }
+    KEY_WRAPS {
+      string kind "passphrase|recovery"
+      string wrap "enc1 AES-GCM of DEK"
+      string salt
+      int N
+      int r
+      int p
+    }
+    AGENT_TOKENS {
+      string token_id PK
+      string wrap "enc1 of enc+idx subkeys"
+      string mode "read|write"
+      string label
+      string revoked_at
+    }
+    INVITES {
+      string code_hash
+      string expires_at
+      string used_by
+    }
+    USER_DB {
+      string file "users/<id>.db"
+      int user_version "6"
+    }
+```
+
+`auth.db` holds identities, wrapped keys, invite hashes and token wraps — never study
+content or unwrapped keys. Each `users/<id>.db` holds that user's decks, cards, SRS state,
+quizzes, questions, attempts and answers; its `user_version` is 6.
+
+### Key hierarchy
+
+```mermaid
+flowchart TD
+    P[Passphrase] -->|scrypt N=2^17 r=8 p=1 + salt| KEK1[passphrase KEK]
+    R[Recovery key 256-bit] -->|HKDF + salt| KEK2[recovery KEK]
+    T[Agent secret 256-bit] -->|HKDF + salt| KEK3[agent KEK]
+    KEK1 --> W1[wrap DEK]
+    KEK2 --> W2[wrap DEK]
+    KEK3 --> W3[wrap subkeys]
+    W1 --> DEK[DEK 32 random bytes]
+    W2 --> DEK
+    DEK -->|HKDF-SHA256 subkeys| ENC[enc: AES-256-GCM field key]
+    DEK -->|HKDF-SHA256 subkeys| IDX[idx: HMAC blind-index key]
+    ENC --> C[enc1: nonce+ct+tag, AAD table.column]
+    IDX --> N[name_key hex for deck uniqueness]
+```
+
+Passphrase change and recovery reset only **rewrap the DEK**; no data is re-encrypted.
+Ciphertext is versioned (`enc1:`). Subkeys are derived with HKDF-SHA256; there is no custom
+cryptography — only `node:crypto` primitives.
 
 ## Run the web app
 
 ```sh
 bun run start
-# -> ministudyui http://127.0.0.1:3000
+# edit-time: bun run dev (server --watch + SCSS watch)
 ```
 
-Open <http://127.0.0.1:3000> in a browser.
+`web/css/` and `web/og-image.png` are generated and gitignored; SCSS in `web/scss/` is the
+source. `bun run start` builds brand assets but not CSS — build it once with
+`bunx sass web/scss:web/css --no-source-map` or use `bun run dev`. `web/messages.json` holds
+user-facing copy. Content renders Markdown with raw HTML escaped, links restricted to
+http(s)/mailto, and LaTeX via KaTeX.
 
-For live reload while editing:
+## Accounts, invites and admin
+
+- **First run:** Setup creates the first user (admin) and shows the recovery key once.
+- **More users:** admin panel → *create invite* → copyable link. Registration is
+  invite-only (`POST /api/auth/register`); there is no open-registration flag. Invites are
+  single-use, expire, and are stored only as a hash.
+- **Admin panel** (admins only): list users, disable/enable/delete. Admins manage accounts
+  but **cannot read another user's content or keys**. Disabling invalidates sessions and
+  agent tokens. Deleting a user removes their DB file and wraps.
+- **CLI:** `bun run user list|create|passwd|recovery-reset|invite-create|invite-list|
+  disable|enable|delete|token-create|token-list|token-revoke|export`. Secrets use hidden
+  prompts; `MINISTUDY_PASSPHRASE` is accepted for non-interactive use.
+
+Login is throttled per username and per IP with identical errors for unknown users and
+wrong passphrases (a dummy KDF equalizes timing). Passwords must be at least 10 characters;
+there are no composition rules. Sessions live in memory only (sliding
+`SESSION_TTL_MINUTES`, default 720); a restart logs everyone out. `ms_session` is
+`HttpOnly; SameSite=Strict; Path=/`, and adds `Secure` when `PUBLIC_ORIGIN` is https.
+
+## Connect an MCP client
+
+MCP is served from the same process at `/mcp` (stateless Streamable HTTP, JSON responses).
+It is **bearer-token only** — a web-session cookie does not authenticate it. Create a token
+in the web UI (*more* sheet → Agent access) or via
+`bun run user token-create --user <name> --label <label> [--read-only]`. Prefer **read-only**:
+card text is untrusted input to an LLM. The token is shown once; only its wrap is stored.
+
+```mermaid
+sequenceDiagram
+    participant C as MCP client
+    participant S as /mcp (Hono)
+    participant A as auth box
+    participant V as vault
+    participant B as box + user DB
+    C->>S: POST /mcp + Authorization: Bearer msk_id.secret
+    S->>S: Host/Origin checks, per-IP throttle
+    S->>A: unlockWithAgentToken(token)
+    A->>V: HKDF KEK, AES-GCM unwrap of subkeys
+    V-->>A: enc/idx subkeys (zeroed in finally)
+    A-->>S: {userId, mode, keys}
+    S->>B: scope.run(ctx, transport.handleRequest)
+    B-->>C: JSON-RPC result
+```
+
+OpenCode (v2 config, verified against installed v2.3.2 — uses `mcp.servers` and
+`oauth: false` for header auth):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "ministudyui": {
+        "type": "remote",
+        "url": "http://127.0.0.1:3000/mcp",
+        "oauth": false,
+        "headers": { "Authorization": "Bearer {env:MINISTUDY_AGENT_TOKEN}" }
+      }
+    }
+  }
+}
+```
+
+The repo's `opencode.json` is already set up for local dev this way. For another client,
+Claude Code style (verify flags against current docs):
 
 ```sh
-bun run dev   # server --watch + sass --watch
+claude mcp add --transport http ministudyui https://study.example.com/mcp \
+  --header "Authorization: Bearer $MINISTUDY_AGENT_TOKEN"
 ```
 
-### Styles (SCSS)
+`/mcp` validates `Origin` when present (DNS-rebinding defense), never accepts tokens in
+URLs, has a body-size cap and failed-auth throttling, and returns 401 with
+`WWW-Authenticate: Bearer` on any auth failure. `GET`/`DELETE` return 405. Read-only tokens
+do not even register mutating tools. **Connectors that only speak OAuth are not supported**;
+OAuth is a possible future phase.
 
-`web/css/` is generated and gitignored. It is produced from `web/scss/`.
-`bun run dev` watches and rebuilds it. To build once without watching:
+### Request/scope flow for the web UI
 
-```sh
-bunx sass web/scss:web/css --no-source-map
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant App as Hono /api
+    participant Session as session.ts
+    participant Auth as auth box
+    participant Scope as scope (ALS)
+    participant Box as library/study/attempts
+    Browser->>App: POST /api/auth/login (passphrase in JSON body only)
+    App->>Auth: login(username, passphrase, ip)
+    Auth-->>App: {userId, keys}
+    App->>Session: create session (keys in memory only)
+    App-->>Browser: Set-Cookie ms_session (HttpOnly, SameSite=Strict)
+    Browser->>App: /api/... + cookie
+    App->>Session: resolve session + check disabled
+    App->>Scope: scope.run({userId, db, keys}, next)
+    Scope->>Box: box function
+    Box->>Box: vault.seal/open with request keys
+    Box-->>Browser: JSON (decrypted content)
 ```
 
-Or keep it watching in another terminal:
+A 401 from any API call shows the auth gate, closes SSE and clears UI state.
 
-```sh
-bun run sass
-```
+## Hosting for others
 
-### Brand assets
+Defaults are localhost-only and safe. To expose the app, terminate TLS at a reverse proxy
+and set `PUBLIC_ORIGIN` to the external https URL.
 
-`web/favicon.svg` and `web/og-image.svg` are the source marks. `bun run assets`
-renders `og-image.svg` to `web/og-image.png` (generated and gitignored). It runs
-automatically as part of `bun run start` and `bun run dev`, so there's no separate
-step on a fresh checkout.
-
-### Messages
-
-User-facing copy lives in `web/messages.json`, loaded once when the page starts.
-The home-page greeting picks a random line from the lists under `greeting`,
-depending on the time of day. Add, remove, or rewrite lines to change the
-wording. Restart the server (or refresh the page) to pick up changes.
-
-### Content formatting
-
-Deck descriptions, card fronts/backs, quiz descriptions, question prompts,
-choices, explanations, and graded answers all render Markdown — headings,
-lists, emphasis, code, blockquotes, links, and tables. LaTeX still works
-alongside it with `$...$` and `$$...$$`; math is protected from the Markdown
-parser, and KaTeX renders the result. Raw HTML is escaped and link targets are
-restricted to http(s) and mailto.
-
-### Environment
-
-| Variable | Default | Notes |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP port. Host is fixed to `127.0.0.1`. |
-| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the MCP server (see below). |
+| `DATA_DIR` | `<repo>/data` | Root for `auth.db` and `users/`. |
+| `PORT` | `3000` | HTTP port. |
+| `BIND_HOST` | `127.0.0.1` | Bind address. |
+| `PUBLIC_ORIGIN` | unset | External https origin; enables `Secure` + HSTS. |
+| `ALLOWED_HOSTS` | localhost/127.0.0.1 + `PUBLIC_ORIGIN` host | Host allow-list. |
+| `TRUST_PROXY` | unset | `1` = use `X-Forwarded-For` for throttling (proxy must overwrite it). |
+| `SESSION_TTL_MINUTES` | `720` | Sliding session idle TTL. |
+| `MAX_USER_DB_MB` | `512` | Per-user DB write cap. |
+| `BACKUP_KEEP` | `14` | Backup directories retained. |
+| `MAX_OPEN_USER_DBS` | `32` | LRU cap for open user DB handles. |
 
-The HTTP server always binds to localhost for security; do not expose it
-directly to a network.
+**Caddy** (example; set `PUBLIC_ORIGIN=https://study.example.com` and `TRUST_PROXY=1`):
 
-## Tests and typecheck
-
-```sh
-bun test          # unit tests (node:test via Bun)
-bun run typecheck # tsc --noEmit
-```
-
-## Run the MCP server
-
-```sh
-bun run mcp
-```
-
-The server speaks MCP over stdio and stores data in the same SQLite file
-(default `data/ministudy.db`, overridable with `DB_PATH`). It exposes tools
-such as `deck_create`, `deck_list`, `deck_update`, `card_add`,
-`card_search`, `quiz_create`, `study_next_due`, `study_stats`, `attempt_list`,
-`attempts_pending_grading`, `answer_grade`, `latex_validate`, and
-`current_context`.
-
-`current_context` reports the card or quiz question currently on screen in the
-web UI, with its full content and answer (and the user's saved answer for a
-quiz question). The web app writes this to a single shared SQLite row as you
-review or move between questions, and clears it on other screens — both
-processes use the same database file, so an LLM can ask about what you are
-looking at without any extra bridge.
-
-## Running with OpenCode
-
-OpenCode connects to this repository's MCP server as a **local (stdio)**
-server. Run OpenCode from the repository root (or set an absolute `cwd`).
-
-### Option 1: CLI (already configured)
-
-```sh
-opencode mcp add ministudyui -- bun src/mcp/stdio.ts
-opencode mcp list   # shows: ministudyui  connected
-```
-
-This has been added to your global OpenCode config
-(`~/.config/opencode/opencode.jsonc`), so the server connects automatically.
-
-### Option 2: manual configuration
-
-If you need to add it to another project config (`opencode.jsonc` or
-`.opencode/opencode.jsonc`) or your global config:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "ministudyui": {
-        "type": "local",
-        "command": ["bun", "src/mcp/stdio.ts"],
-        "cwd": "."
-      }
+```caddyfile
+study.example.com {
+  reverse_proxy 127.0.0.1:3000 {
+    flush_interval -1
+    transport http {
+      read_timeout  300s
+      write_timeout 300s
     }
   }
 }
 ```
 
-If you configure it globally, use an absolute `cwd` (and/or absolute command
-path) so the server starts regardless of the working directory:
+`flush_interval -1` is important for the SSE event stream. Alternatively, **Tailscale**
+(put the app on a private tailnet and use the tailnet hostname in `PUBLIC_ORIGIN` and
+`ALLOWED_HOSTS`) or **Cloudflare Tunnel** (`cloudflared tunnel --url http://127.0.0.1:3000`,
+with the public hostname in `PUBLIC_ORIGIN`) avoid exposing a public port. Never expose the
+app directly without TLS.
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "ministudyui": {
-        "type": "local",
-        "command": ["bun", "/absolute/path/to/ministudyui/src/mcp/stdio.ts"],
-        "cwd": "/absolute/path/to/ministudyui"
-      }
-    }
-  }
-}
+### Backups and restore
+
+```sh
+bun run backup     # VACUUM INTO <DATA_DIR>/backups/<timestamp>/{auth.db,users/*.db}
 ```
 
-To use a non-default database, pass `DB_PATH` through `environment`:
+Schedule it with cron. `BACKUP_KEEP` (default 14) prunes old directories. Restore by
+stopping the server, replacing the files under `DATA_DIR` from a backup directory, and
+restarting; verify with `bun test` afterward. Backups contain ciphertext for content, but
+`auth.db` contains wrapped keys and invite/token metadata — protect the backup files too.
 
-```jsonc
-{
-  "type": "local",
-  "command": ["bun", "src/mcp/stdio.ts"],
-  "cwd": ".",
-  "environment": {
-    "DB_PATH": "/path/to/ministudy.db"
-  }
-}
+### Upgrading
+
+Pull the branch, run `bun install`, `bun run seed` (idempotent) and `bun run start`.
+User DB schema migrations are guarded and run when a user DB is opened; an old v1–v5 DB is
+**not** auto-upgraded. If you are still on the pre-multiuser single DB, run the one-time
+`bun run migrate:legacy -- --user <name> [--legacy <path>] [--dry-run]` on a copy first. It
+backs up the legacy file, creates the user, imports all rows preserving ids/timestamps,
+encrypts content, verifies counts/decryption/checksums and prints the recovery key once.
+It never modifies or deletes the legacy file; after verifying, delete the legacy `.db`,
+its `-wal`/`-shm`, and the pre-migration backup yourself. `--dry-run` touches only temp
+files and is safe to try first.
+
+## Security / threat model
+
+**Protects:** study content at rest against disk or backup theft, other OS users, and
+other app users. Every content column is AES-256-GCM encrypted with a per-user key that
+exists unwrapped only in server memory while that user is logged in or an agent token is
+being used. `auth.db` stores only wrapped keys, a recovery-id hash, invite hashes and
+wrapped agent subkeys.
+
+**Does not protect:** the server operator can technically access your data while you are
+unlocked (the server decrypts on your behalf); anyone inspecting the running process can
+too. Plaintext metadata is not encrypted: ids, positions, timestamps, SRS state and
+`due_at`, ratings, counts, statuses and `decks.name_key` (a blind index, not the name).
+An agent token lets its holder read and, in write mode, modify that user's data; the server
+decrypts on its behalf, so treat tokens like passwords and prefer read-only — card text is
+untrusted input to an LLM. Losing both your passphrase and recovery key means unrecoverable
+data.
+
+**Scale-out:** one synchronous SQLite file per user is sufficient well beyond this app's
+scale (5–20 trusted users, hundreds would still be fine). All SQL stays behind the `store`
+box, so a future port (e.g. Postgres) is contained. No custom crypto; primitives are
+`node:crypto` only. Passkeys/WebAuthn are out of scope — passphrase-derived keys are the
+design and a possible future addition.
+
+## Tests
+
+```sh
+bun run typecheck && bun test
 ```
 
-Notes:
-
-- The default `DB_PATH` resolves relative to the source file, so the database
-  is `<repo>/data/ministudy.db` even when `cwd` differs.
-- Make sure the `data/` directory exists before starting (`mkdir -p data`).
-- MCP tools are exposed through OpenCode's Code Mode by default (grouped under
-  `tools.ministudyui.*`). Set `"codemode": false` on the server entry if you
-  need them on the provider's native tool list.
-- Verify the connection in the TUI with `/mcps`, or via `opencode mcp list`.
-
-### Web UI vs. MCP
-
-The web UI and the MCP server share the same SQLite database. You can run both
-at once (`bun run start` + the MCP server started by OpenCode); SQLite is
-opened in WAL mode with a busy timeout to tolerate concurrent access. Avoid
-pointing them at different `DB_PATH` values unless you intend separate stores.
+The suite includes RFC 5869 HKDF known-answer vectors, AES-GCM tamper/nonce tests,
+constant-time comparisons, a canary scan of raw DB bytes (DB + WAL + `auth.db`), a TEXT
+column coverage check, scope-leak and throttling tests, HTTP/MCP auth matrices, an
+export/import round trip, and the legacy migration test. No linter is configured; strict
+TypeScript and tests are the gate.

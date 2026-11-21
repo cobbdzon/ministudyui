@@ -1,25 +1,25 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import * as store from '../boxes/store/index.js';
 import * as library from '../boxes/library/index.js';
 import * as study from '../boxes/study/index.js';
 import * as attempts from '../boxes/attempts/index.js';
 import * as latex from '../boxes/latex/index.js';
 import * as context from '../boxes/context/index.js';
 import { asAppError } from '../boxes/errors.js';
-import * as scope from '../boxes/scope/index.js';
-import { dataDir, ensureDataDir } from '../boxes/paths.js';
-import { join } from 'node:path';
 
-// Temporary legacy bootstrap; the whole stdio server is removed in Phase 6.
-ensureDataDir();
-const legacyDb = store.open(join(dataDir(), 'ministudy.db'));
-store.migrate();
-scope.installTestFallback(scope.devContext(legacyDb));
+// Tool names, descriptions and input schemas are copied verbatim from the
+// Phase 0 stdio server; the parity test compares them to the snapshot.
+const MUTATING = new Set([
+  'deck_create', 'deck_delete', 'deck_update', 'card_add', 'card_update',
+  'card_schedule', 'card_delete', 'quiz_create', 'quiz_add_questions',
+  'quiz_update', 'quiz_delete', 'question_update', 'question_delete', 'answer_grade',
+]);
+const DESTRUCTIVE = new Set([
+  'deck_delete', 'card_delete', 'quiz_delete', 'question_delete', 'answer_grade',
+]);
 
-const server = new McpServer({ name: 'ministudyui', version: '0.1.0' });
+export interface ToolOptions { readOnly: boolean }
 
 function ok(data: object): CallToolResult {
   return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: true, ...data }) }] };
@@ -37,6 +37,19 @@ function wrap<A, R>(fn: (a: A) => R | Promise<R>) {
   };
 }
 
+export function registerTools(server: McpServer, opts: ToolOptions): void {
+  const register = (name: string, config: Record<string, unknown>, cb: (...args: never[]) => unknown) => {
+    if (opts.readOnly && MUTATING.has(name)) return;
+    server.registerTool(name, {
+      ...config,
+      annotations: {
+        readOnlyHint: !MUTATING.has(name),
+        destructiveHint: DESTRUCTIVE.has(name),
+        idempotentHint: !MUTATING.has(name),
+        openWorldHint: false,
+      },
+    } as never, cb as never);
+  };
 const Id = z.number().int().min(1);
 const DeckRef = z.union([z.number().int().min(1), z.string().min(1).max(120)]);
 const Tags = z.array(z.string().min(1).max(40)).max(10).optional();
@@ -121,44 +134,43 @@ type PendingArgs = z.infer<typeof PendingInput>;
 type GradeArgs = z.infer<typeof GradeInput>;
 type LatexArgs = z.infer<typeof LatexInput>;
 
-server.registerTool('deck_create', { description: 'Create a deck', inputSchema: DeckCreateInput }, wrap((a: DeckCreateArgs) => library.deckCreate(a)));
-server.registerTool('deck_list', { description: 'List decks', inputSchema: {} }, wrap(() => ({ decks: library.deckList() })));
-server.registerTool('deck_delete', { description: 'Delete a deck', inputSchema: DeckDeleteInput }, wrap((a: DeckDeleteArgs) => library.deckDelete({ deck: a.deck, confirmName: a.confirm_name })));
-server.registerTool('deck_update', { description: 'Rename a deck and/or edit its description (provide at least one)', inputSchema: DeckUpdateInput }, wrap((a: DeckUpdateArgs) => library.deckUpdate({ deck: a.deck, name: a.name, description: a.description })));
+register('deck_create', { description: 'Create a deck', inputSchema: DeckCreateInput }, wrap((a: DeckCreateArgs) => library.deckCreate(a)));
+register('deck_list', { description: 'List decks', inputSchema: {} }, wrap(() => ({ decks: library.deckList() })));
+register('deck_delete', { description: 'Delete a deck', inputSchema: DeckDeleteInput }, wrap((a: DeckDeleteArgs) => library.deckDelete({ deck: a.deck, confirmName: a.confirm_name })));
+register('deck_update', { description: 'Rename a deck and/or edit its description (provide at least one)', inputSchema: DeckUpdateInput }, wrap((a: DeckUpdateArgs) => library.deckUpdate({ deck: a.deck, name: a.name, description: a.description })));
 
-server.registerTool('card_add', { description: 'Add cards', inputSchema: CardAddInput }, wrap((a: CardAddArgs) => library.cardAdd(a)));
-server.registerTool('card_update', { description: 'Update a card', inputSchema: CardUpdateInput }, wrap((a: CardUpdateArgs) => library.cardUpdate({ cardId: a.card_id, front: a.front, back: a.back, tags: a.tags, deck: a.deck })));
-server.registerTool('card_schedule', { description: 'Override a card due time (shift by minutes and/or make due now) and toggle whether it is ignored in reviews', inputSchema: CardScheduleInput }, wrap((a: CardScheduleArgs) => study.cardSchedule({
+register('card_add', { description: 'Add cards', inputSchema: CardAddInput }, wrap((a: CardAddArgs) => library.cardAdd(a)));
+register('card_update', { description: 'Update a card', inputSchema: CardUpdateInput }, wrap((a: CardUpdateArgs) => library.cardUpdate({ cardId: a.card_id, front: a.front, back: a.back, tags: a.tags, deck: a.deck })));
+register('card_schedule', { description: 'Override a card due time (shift by minutes and/or make due now) and toggle whether it is ignored in reviews', inputSchema: CardScheduleInput }, wrap((a: CardScheduleArgs) => study.cardSchedule({
   cardId: a.card_id, adjustMinutes: a.adjust_minutes, dueNow: a.due_now, ignored: a.ignored,
 })));
-server.registerTool('card_delete', { description: 'Delete cards', inputSchema: CardDeleteInput }, wrap((a: CardDeleteArgs) => library.cardDelete({ cardIds: a.card_ids })));
-server.registerTool('card_search', { description: 'Search cards', inputSchema: CardSearchInput }, wrap((a: CardSearchArgs) => library.cardSearch(a)));
+register('card_delete', { description: 'Delete cards', inputSchema: CardDeleteInput }, wrap((a: CardDeleteArgs) => library.cardDelete({ cardIds: a.card_ids })));
+register('card_search', { description: 'Search cards', inputSchema: CardSearchInput }, wrap((a: CardSearchArgs) => library.cardSearch(a)));
 
-server.registerTool('quiz_create', { description: 'Create quiz', inputSchema: QuizCreateInput }, wrap((a: QuizCreateArgs) => library.quizCreate(a)));
-server.registerTool('quiz_add_questions', { description: 'Add questions', inputSchema: QuizAddInput }, wrap((a: QuizAddArgs) => library.quizAddQuestions({ quizId: a.quiz_id, questions: a.questions })));
-server.registerTool('quiz_get', { description: 'Get quiz', inputSchema: QuizGetInput }, wrap((a: QuizGetArgs) => library.quizGet({ quizId: a.quiz_id, includeAnswers: a.include_answers })));
-server.registerTool('quiz_list', { description: 'List quizzes', inputSchema: QuizListInput }, wrap((a: QuizListArgs) => ({ quizzes: library.quizList(a) })));
-server.registerTool('quiz_update', { description: 'Edit a quiz title, description, deck, source or shuffle setting (only provided fields change)', inputSchema: QuizUpdateInput }, wrap((a: QuizUpdateArgs) => library.quizUpdate({ quizId: a.quiz_id, title: a.title, description: a.description, deck: a.deck, source: a.source, shuffle: a.shuffle })));
-server.registerTool('quiz_delete', { description: 'Delete a quiz and its questions', inputSchema: QuizDeleteInput }, wrap((a: QuizDeleteArgs) => library.quizDelete({ quizId: a.quiz_id, confirmTitle: a.confirm_title })));
-server.registerTool('quiz_outline', { description: 'List question ids, positions and types of a quiz without loading prompts or answers', inputSchema: QuizOutlineInput }, wrap((a: QuizOutlineArgs) => library.quizOutline({ quizId: a.quiz_id })));
-server.registerTool('question_update', { description: 'Edit existing questions in bulk by id; only provided fields change', inputSchema: QuestionUpdateInput }, wrap((a: QuestionUpdateArgs) => library.questionUpdate({
+register('quiz_create', { description: 'Create quiz', inputSchema: QuizCreateInput }, wrap((a: QuizCreateArgs) => library.quizCreate(a)));
+register('quiz_add_questions', { description: 'Add questions', inputSchema: QuizAddInput }, wrap((a: QuizAddArgs) => library.quizAddQuestions({ quizId: a.quiz_id, questions: a.questions })));
+register('quiz_get', { description: 'Get quiz', inputSchema: QuizGetInput }, wrap((a: QuizGetArgs) => library.quizGet({ quizId: a.quiz_id, includeAnswers: a.include_answers })));
+register('quiz_list', { description: 'List quizzes', inputSchema: QuizListInput }, wrap((a: QuizListArgs) => ({ quizzes: library.quizList(a) })));
+register('quiz_update', { description: 'Edit a quiz title, description, deck, source or shuffle setting (only provided fields change)', inputSchema: QuizUpdateInput }, wrap((a: QuizUpdateArgs) => library.quizUpdate({ quizId: a.quiz_id, title: a.title, description: a.description, deck: a.deck, source: a.source, shuffle: a.shuffle })));
+register('quiz_delete', { description: 'Delete a quiz and its questions', inputSchema: QuizDeleteInput }, wrap((a: QuizDeleteArgs) => library.quizDelete({ quizId: a.quiz_id, confirmTitle: a.confirm_title })));
+register('quiz_outline', { description: 'List question ids, positions and types of a quiz without loading prompts or answers', inputSchema: QuizOutlineInput }, wrap((a: QuizOutlineArgs) => library.quizOutline({ quizId: a.quiz_id })));
+register('question_update', { description: 'Edit existing questions in bulk by id; only provided fields change', inputSchema: QuestionUpdateInput }, wrap((a: QuestionUpdateArgs) => library.questionUpdate({
   questions: a.questions.map((q) => {
     const { question_id, ...patch } = q;
     return { questionId: question_id, ...patch };
   }),
 })));
-server.registerTool('question_delete', { description: 'Delete questions by id and renumber the remaining ones', inputSchema: QuestionDeleteInput }, wrap((a: QuestionDeleteArgs) => library.questionDelete({ questionIds: a.question_ids, renumber: a.renumber })));
+register('question_delete', { description: 'Delete questions by id and renumber the remaining ones', inputSchema: QuestionDeleteInput }, wrap((a: QuestionDeleteArgs) => library.questionDelete({ questionIds: a.question_ids, renumber: a.renumber })));
 
-server.registerTool('study_next_due', { description: 'Next due cards', inputSchema: QueueInput }, wrap((a: QueueArgs) => ({ cards: study.queue(a) })));
-server.registerTool('study_stats', { description: 'Study stats', inputSchema: StatsInput }, wrap((a: StatsArgs) => study.stats(a)));
-server.registerTool('attempt_list', { description: 'List attempts', inputSchema: AttemptListInput }, wrap((a: AttemptListArgs) => ({ attempts: attempts.list({ status: a.status, quizId: a.quiz_id, limit: a.limit }) })));
-server.registerTool('attempts_pending_grading', { description: 'Pending grading', inputSchema: PendingInput }, wrap((a: PendingArgs) => ({ answers: attempts.pending(a) })));
-server.registerTool('answer_grade', { description: 'Grade an answer', inputSchema: GradeInput }, wrap((a: GradeArgs) => attempts.gradeAnswer({ answerId: a.answer_id, points: a.points, feedback: a.feedback })));
-server.registerTool('latex_validate', { description: 'Validate LaTeX', inputSchema: LatexInput }, wrap((a: LatexArgs) => ({ results: latex.validate(a.sources) })));
-server.registerTool('current_context', {
+register('study_next_due', { description: 'Next due cards', inputSchema: QueueInput }, wrap((a: QueueArgs) => ({ cards: study.queue(a) })));
+register('study_stats', { description: 'Study stats', inputSchema: StatsInput }, wrap((a: StatsArgs) => study.stats(a)));
+register('attempt_list', { description: 'List attempts', inputSchema: AttemptListInput }, wrap((a: AttemptListArgs) => ({ attempts: attempts.list({ status: a.status, quizId: a.quiz_id, limit: a.limit }) })));
+register('attempts_pending_grading', { description: 'Pending grading', inputSchema: PendingInput }, wrap((a: PendingArgs) => ({ answers: attempts.pending(a) })));
+register('answer_grade', { description: 'Grade an answer', inputSchema: GradeInput }, wrap((a: GradeArgs) => attempts.gradeAnswer({ answerId: a.answer_id, points: a.points, feedback: a.feedback })));
+register('latex_validate', { description: 'Validate LaTeX', inputSchema: LatexInput }, wrap((a: LatexArgs) => ({ results: latex.validate(a.sources) })));
+register('current_context', {
   description: 'What the user is currently viewing in the web UI: the flashcard in review or the quiz question on screen, with its full content, answer and their own saved answer. Use this to answer questions about the current card/question. context is null when nothing is in focus.',
   inputSchema: z.object({}),
 }, wrap(() => context.current()));
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+}

@@ -5,11 +5,13 @@
   "scripts": {
     "assets": "bun scripts/build-assets.ts",
     "start": "bun run assets && bun src/http/server.ts",
-    "mcp": "bun src/mcp/stdio.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "seed": "bun scripts/seed.ts",
     "seed:demo": "bun scripts/seed-demo.ts",
+    "user": "bun scripts/user.ts",
+    "backup": "bun scripts/backup.ts",
+    "migrate:legacy": "bun scripts/migrate-legacy.ts",
     "sass": "sass --watch web/scss:web/css --no-source-map",
     "dev": "bun run assets && (bun --watch src/http/server.ts & bun run sass)"
   },

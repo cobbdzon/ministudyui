@@ -1,132 +1,127 @@
 # AGENTS.md — ministudyui
 
-Read this before exploring. It is a map of the repo so you can go straight to the
-file you need instead of re-deriving the architecture each session.
+Read this before exploring. Multi-user, per-user-encrypted build on branch `encrypted-multiuser`.
 
 ## What this is
 
-A quiet, local-first study app: decks, flashcards, spaced repetition (SRS),
-quizzes, attempts, grading, and stats. All data lives in one local SQLite file
-(`data/ministudy.db`). It has **three entry points over one shared core**:
+A quiet study app: decks, flashcards, spaced repetition, quizzes, attempts, grading, stats.
+One process serves two entry points over one shared core:
 
 | Entry point | File | Role |
 | --- | --- | --- |
-| HTTP server (Bun) | `src/http/server.ts` | Web UI + JSON API on `127.0.0.1:3000` |
-| MCP server (stdio) | `src/mcp/stdio.ts` | Same domain logic exposed as MCP tools |
+| HTTP server (Bun) | `src/http/server.ts` | Web UI + JSON API, and `/mcp` |
 | Shared core ("boxes") | `src/boxes/*/index.ts` | All business logic + SQLite access |
 
-Both servers are thin adapters that call the **same** box functions. Put domain
-logic in a box, never in an HTTP handler or MCP tool registration. (One legacy
-exception: `GET /api/attempts/:id` reads `attempts`/`answers` with raw SQL in
-`http/app.ts`.)
+There is **no stdio MCP server** and no second process. `src/http/mcp.ts` mounts a stateless
+Streamable HTTP MCP server at `/mcp` in the same process, so web live-updates fire when an
+MCP tool mutates data. HTTP handlers and MCP registrations are thin adapters; domain logic
+lives in boxes.
 
-## Commands (Bun only; Node not required)
+Storage: `<DATA_DIR>/auth.db` (users, invites, key wraps, agent tokens — own schema,
+`user_version = 1`) and one `<DATA_DIR>/users/<numeric-id>.db` per user (the study schema,
+`user_version = 6`). File names are numeric ids, never usernames. No `user_id` columns:
+isolation comes from separate files. Username uniqueness, one-quiz-per-deck, `ui_context`
+single row, `undo`, `restart` and the changefeed cursor are all per-user automatically.
+
+## Commands (Bun only)
 
 ```sh
-bun install                 # dependencies
-bun run seed                # create data/ + migrate schema, NO data (real setup)
-bun run seed:demo           # fill with sample decks/cards/quizzes/attempts (no-op if decks exist)
-bun run start               # build assets + start HTTP server at http://127.0.0.1:3000
-bun run dev                 # watch server + watch/rebuild SCSS
-bun run mcp                 # start MCP stdio server (OpenCode normally starts this)
-bun test                    # unit/integration tests
-bun run typecheck           # tsc --noEmit
-bunx sass web/scss:web/css --no-source-map   # one-off CSS build
-bun run assets              # render web/og-image.svg -> web/og-image.png
+bun install
+bun run seed              # create DATA_DIR + auth.db schema, NO users
+bun run seed:demo         # create 'demo' user (DEMO_PASSPHRASE, insecure default) + sample data
+bun run start             # build assets + start HTTP server (default 127.0.0.1:3000)
+bun run dev               # watch server + rebuild SCSS
+bun run user <cmd>        # local admin CLI (see below)
+bun run backup            # VACUUM INTO backup of auth.db + every user DB
+bun run migrate:legacy -- --user <name> [--legacy <path>] [--dry-run]
+bun test
+bun run typecheck
+bunx sass web/scss:web/css --no-source-map
+bun run assets
 ```
 
-MCP server is also wired into this repo via `opencode.json` (`bun src/mcp/stdio.ts`)
-and exposed to OpenCode Code Mode as `tools.ministudyui.*`. Prefer those tools
-over direct SQL when manipulating study data. For global OpenCode setup
-(`~/.config/opencode/opencode.jsonc`), `codemode: false`, and `/mcps` verification,
-see README.md.
+`bun run user` commands: `create`, `list`, `passwd`, `recovery-reset`, `invite-create`,
+`invite-list`, `disable`, `enable`, `delete`, `token-create --user <n> --label <l> [--read-only]`,
+`token-list`, `token-revoke --id <id>`, `export --user <n> [--out <file>]`.
+Hidden prompts are used for secrets; `MINISTUDY_PASSPHRASE` allows non-interactive use.
 
-## Environment
+## Environment (real env vars; `.env*` is NOT loaded)
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP port; host is fixed to `127.0.0.1`. Used by `http/server.ts` and the host/origin check in `http/app.ts`. Changing it breaks `scripts/smoke.ts`, which hardcodes `http://127.0.0.1:3000`. |
-| `DB_PATH` | `<repo>/data/ministudy.db` | Used by the MCP server, `scripts/seed.ts`, and `scripts/seed-demo.ts`; its default resolves relative to the source file, independent of `cwd`. The HTTP server does **not** read it — `src/http/server.ts` always opens `<repo>/data/ministudy.db`. Keep them in sync unless you intend separate stores. |
+| `DATA_DIR` | `<repo>/data` | Root for `auth.db` and `users/`. |
+| `PORT` | `3000` | HTTP port. |
+| `BIND_HOST` | `127.0.0.1` | Bind address. Defaults stay localhost-only. |
+| `PUBLIC_ORIGIN` | unset | e.g. `https://study.example.com`; adds its host to `ALLOWED_HOSTS`, enables `Secure` cookie + HSTS when https. |
+| `ALLOWED_HOSTS` | `127.0.0.1:<PORT>,localhost:<PORT>` + `PUBLIC_ORIGIN` host | Comma-separated Host header allow-list. |
+| `TRUST_PROXY` | unset | Set to `1` to use `X-Forwarded-For` for throttling. |
+| `SESSION_TTL_MINUTES` | `720` | Sliding idle TTL; sessions are memory-only. |
+| `MAX_USER_DB_MB` | `512` | Write-time size cap per user DB. |
+| `BACKUP_KEEP` | `14` | Number of timestamped backup directories to retain. |
+| `MAX_OPEN_USER_DBS` | `32` | LRU cap for open per-user DB handles. |
+| `DEMO_PASSPHRASE` | `insecure-demo-passphrase` | Used only by `seed:demo`. |
+| `MINISTUDY_PASSPHRASE` | unset | Non-interactive CLI helper. |
+| `AUTH_THROTTLE_BASE_MS` | `1000` | Test-only throttle tuning. |
 
-`.env*` files are gitignored but **nothing loads them** (no dotenv dependency or env-file loading) — use real environment variables; there is no `.env.example`.
-
-## Layout / where to make changes
+## Layout
 
 ```
-shared/            types.ts (all TS types), schemas.ts (HTTP/import Zod schemas + inferred inputs)
+shared/            types.ts (type-only), schemas.ts (Zod v4 HTTP/import schemas)
 src/boxes/
-  store/           SQLite singleton, schema.sql, migrations (user_version 1..4), tx/run/get/all/count
-  library/         decks, cards, quizzes, questions, importBundle  ← biggest box
-  study/           review queue, review, undo, cardSchedule, stats, deckSummaries
-  attempts/        start/restart/answer/submit/gradeAnswer/pending/list
-  grader/          gradeAuto (mcq/multi/numeric auto; short/latex -> pending)
-  srs/             schedule + preview (SM-2 style intervals)
-  context/         current UI context (read/write/current) shared via SQLite
-  changefeed/      change log polling + subscribe (SSE backing)
-  latex/           validate LaTeX spans with KaTeX
-  errors.ts        AppError + asAppError (error codes -> HTTP status)
+  store/           SQLite helpers, schema.sql (v6), migrations 1..6
+  auth/            auth.db schema + identity, wraps, invites, agent tokens, throttling
+  vault/           HKDF/HMAC/AES-GCM primitives, field seal/open, DEK wraps, base32
+  scope/           AsyncLocalStorage<UserContext>, current()/run(), test fallback
+  userdb/          per-user DB registry: lazy open, pragmas, LRU + leases
+  library/         decks, cards, quizzes, questions, importBundle  ← field mappers
+  study/           queue, review, undo, cardSchedule, stats, deckSummaries
+  attempts/        start, get, restart, answer, submit, gradeAnswer, pending, list
+  grader/ srs/ latex/   grading, scheduling, LaTeX validation
+  context/         ui_context read/write/current (ids only; no encrypted text)
+  changefeed/      change log + subscribe (SSE backing; re-enters scope on ticks)
+  export/          plaintext bundle export
+  errors.ts        AppError + codes -> HTTP status
 src/http/
-  app.ts           ALL routes (~30) on a Hono app; exports `app` + `AppType`
-  server.ts        opens DB, migrates, Bun.serve
-  static.ts        serves web/ + shared/ + vendor JS; path-traversal guard; transpiles .ts on the fly
-  validate.ts      v() wrapper: zValidator with the app's error envelope
-src/mcp/stdio.ts   MCP tool registration (snake_case args -> camelCase box inputs)
-web/               browser app, served raw (no bundler); TS transpiled by Bun on request
-  app.ts           shell, hash router, theme, shortcuts, live-update batching, boot
-  api.ts           the ONLY data interface the UI uses (typed Hono `hc` client + `?mock=1` switch)
-  api.mock.ts      in-memory implementation of `Api` for UI work without a server
-  context.ts       AppContext / ViewModule / Mount types
-  ui.ts, icons.ts, math.ts, messages.ts  shared UI helpers
-  import-prompt.ts     IMPORT_PROMPT text copied by the Import view (paste into another AI chat to generate a bundle)
-  views/           one module per screen: home, review, deck, quizzes, quiz, attempt, grading, stats, import
-  scss/            style sources (tokens, base, components, views, micro-interactions, app)
-  css/             GENERATED + gitignored (built from scss)
-  katex/, fonts/   vendored assets
-scripts/           seed.ts, seed-demo.ts, build-assets.ts, smoke.ts (Playwright screenshots)
-test/              bun test suites (see below)
+  app.ts           Hono app: all routes, middleware, security headers, config
+  server.ts        opens auth.db, Bun.serve
+  config.ts        env-driven network/session config
+  session.ts       in-memory sessions (keys live here only)
+  mcp.ts           /mcp bearer-token auth + stateless Streamable HTTP transport
+  static.ts        web/ + shared/ + vendor JS, path-traversal guard
+  validate.ts      Zod validator wrapper
+src/mcp/tools.ts   tool registration (shared by /mcp; read-only mode)
+web/               browser app, no bundler; see below
+scripts/           seed, seed-demo, user, backup, migrate-legacy, smoke, build-assets
+test/              bun:test + node:test suites, mechanical security tests, fixtures
 ```
 
-## Conventions and gotchas (important)
+## Conventions and gotchas
 
-- **Imports use `.js` extensions** for local TS files (e.g. `import * as store from '../store/index.js'`). tsconfig uses `moduleResolution: "Bundler"`, `strict`, `noEmit`. Shared types import as `../../shared/types.js` from `src/http/*` and `src/mcp/*`, but `../../../shared/types.js` from boxes (`src/boxes/*/index.ts`). **`shared/types.ts` must stay type-only** — web code uses `import type` so Bun erases it; a runtime import would be requested by the no-bundler browser and fail.
-- **Naming boundary:** core boxes take **camelCase** params (`confirmName`, `cardId`, `quizId`). HTTP JSON bodies and MCP tool args use **snake_case** (`confirm_name`, `card_id`, `quiz_id`). The adapters map between them — follow this when adding routes/tools.
-- **Single DB singleton:** `src/boxes/store/index.ts` holds module-level `db`. Call `store.open(path)` (sets pragmas: WAL, foreign_keys, busy_timeout=5000, synchronous=NORMAL) then `store.migrate()` at startup. Tests call `store.open(':memory:'); store.migrate()` in `beforeEach` (or inline per test in `smoke.test.ts`). On a fresh checkout, run `bun run seed` before `bun run start` **or `bun run mcp`** (neither opens a DB that lacks `data/`; `seed.ts`/`seed-demo.ts` create it), and build CSS once via `bunx sass web/scss:web/css --no-source-map` or use `bun run dev` — `web/css/` is gitignored and `start` builds only brand assets, so otherwise the app loads unstyled.
-- **Schema/migrations:** `schema.sql` is the v1 base; incremental migrations are in `store.migrate()` keyed on `PRAGMA user_version` (currently 4). Fresh DBs get later columns/tables from `schema.sql` too, so migrations guard with `IF NOT EXISTS`/column checks. Don't edit applied migration numbers in place — add a new `v < N` block. DB columns are snake_case; timestamps are ISO strings — schema defaults use `strftime('%Y-%m-%dT%H:%M:%fZ','now')`, JS-side writes use `new Date().toISOString()`.
-- **DB tables:** `decks`, `cards`, `card_state` (SRS state + `ignored`), `reviews`, `quizzes`, `questions`, `attempts`, `answers`, `ui_context` (single row id=1), `changes`. Triggers auto-create `card_state` on card insert and log changes to `changes` for the SSE feed. `card_state` has no change trigger, so `cardSchedule` touches `cards.updated_at` to emit a feed event.
-- **Constraints to remember:** deck names unique (NOCASE); **one quiz per deck** (unique index `idx_quizzes_deck`, enforced in library + migration v2); questions unique per `(quiz_id, position)`; answer unique per `(attempt_id, question_id)`.
-- **Errors:** throw `AppError(code, message, field?, hint?)`. Codes: `VALIDATION | NOT_FOUND | CONFLICT | FORBIDDEN | INTERNAL | ERROR`. HTTP maps codes to 400/403/404/409/500 (`STATUS` in `http/app.ts`) and returns `{code, message, field?, hint?}`. MCP wraps the same via `wrap()`/`fail()`.
-- **Validation:** HTTP/import request schemas live in `shared/schemas.ts` (Zod v4) and are the source of inferred input types re-exported by `shared/types.ts`. Query params stay strings (`qstr` preprocess) and handlers convert with `Number(...)`. **MCP tool input schemas are declared separately** (duplicated inline in `src/mcp/stdio.ts`) — keep them in sync with the shared ones. Adding a feature usually means: schema → box function → HTTP route → (maybe) MCP tool → `Api` method in `web/api.ts` **and** `web/api.mock.ts` (the mock mirrors `Api`; keep both in sync).
-- **Grading:** `mcq`/`multi`/`numeric` are auto-graded (`graded_by='auto'`); `short`/`latex` become `pending` until `answer_grade` grades them — that function always stamps `graded_by='ai'` (the schema's `'manual'` value is never written). Attempt status is `in_progress → submitted → graded` (graded only when no pending answers).
-- **SRS:** rating 0..3 = Again/Hard/Good/Easy. `Again` → +10min, ease −0.2, reps=0; new passing card intervals are 1d/3d/7d; later intervals use SM-2 ease formula. `preview()` drives the on-screen rating-button labels. Don't change interval math without updating `test/smoke.test.ts` expectations (`test/schedule.test.ts` covers manual due-time/`ignored` overrides, not interval math).
-- **Small behavioral quirks:** `study.undo()` reverts the globally most recent review (not per-card) and deletes that review row. `library.cardAdd()` defaults `source` to `'ai'` when omitted (the MCP `card_add` tool has no source arg), while the DB column default is `'user'`. In HTTP the review queue without a `deck` resolves to deck 0 → empty queue, and an unknown numeric deck id also gives an empty queue, but an unknown deck **name** throws `NOT_FOUND`. Re-answering a question resets it to `pending` without re-running the auto-grader until `submit()`. `attempts.restart()` is destructive: it deletes **all** in-progress attempts for the quiz (with their answers, including pending ones) before starting a new one.
-- **Content rendering:** `web/math.ts` is the single point where untrusted text becomes DOM. Markdown via `marked` with **raw HTML escaped**, links restricted to http(s)/mailto, LaTeX protected from Markdown then KaTeX-rendered. Never bypass this sanitizer. `src/boxes/latex/index.ts` validates `$...$`/`$$...$$` server-side.
-- **Web app:** no bundler. `index.html` uses an import map for `hono/client` and `marked`, served from `node_modules` by `src/http/static.ts` under `/vendor/...`. Module scripts are `.js` URLs that map to `.ts` files transpiled on request. Hash router (`#/home`, `#/review/:deckId`, `#/deck/:id`, `#/quiz/:id`, `#/attempt/:id`, `#/quizzes`, `#/grading`, `#/stats`); `import` is **not** a route (`RoutedViewId` excludes it) — the Import view opens as a modal via `openImport()` from the shell. Views export `mount(el, ctx)` returning an optional cleanup fn. CSS is generated from `web/scss/` into gitignored `web/css/` — edit SCSS, never the generated CSS. **`web/scss/app.scss` is currently orphaned** — `index.html` doesn't link `/css/app.css`, so editing it has no visual effect (the linked styles are tokens/base/components/views/micro-interactions).
-- **Mock mode:** append `?mock=1` to any URL to use `web/api.mock.ts` (in-memory fixtures) instead of the server — useful for UI work/screenshots without a DB. `scripts/smoke.ts` uses this but hardcodes an absolute, single-user Chromium path (`/home/samsepi0l/.cache/ms-playwright/chromium-1254/...`) and writes screenshots to `/tmp/opencode/shots` — edit those before using it elsewhere.
-- **UI ↔ MCP bridge:** the web app writes the currently-viewed card/question to the `ui_context` table as you navigate (`api.setUiContext`); other screens clear it with `{view:null}`. MCP `current_context` reads it so an LLM can answer about what's on screen. `GET/PUT /api/ui/context` are the endpoints.
-- **Live updates:** SQL triggers write to `changes`; SSE endpoint `/api/events` streams them with a 20s heartbeat comment, while the server runs with `idleTimeout: 255` — keep both in mind when changing long-held connections. `changefeed.subscribe()` polls every 1s and starts its cursor at the current `MAX(id)` (older changes are never delivered to a new stream); the web app batches events into a `live:change` event (550ms) and shows toasts.
-- **Security:** HTTP middleware rejects any request whose `Host`/`Origin` isn't `127.0.0.1:<PORT>` or `localhost:<PORT>`; port fixed host bind to `127.0.0.1`. Do not expose to a network. Static server guards against path traversal.
+- **Imports use `.js` extensions** for local TS. `shared/types.ts` must stay type-only (web uses `import type`). Boxes import it as `../../../shared/types.js`, HTTP/MCP as `../../shared/types.js`.
+- **Naming boundary:** boxes take camelCase; HTTP JSON and MCP args use snake_case; adapters map.
+- **Scope:** every box function resolves its DB via `store.run/get/all/count/tx` → `scope.current()`. A missing scope throws `UNAUTHENTICATED`. Tests call `store.open(':memory:')`, which installs a fixed-key test fallback; production never opens in-memory DBs. Long-lived async work (SSE timers) captures the context at subscribe time and re-enters `scope.run` on every tick.
+- **Vault:** `vault.seal(table,column,value)` / `vault.open(...)` use `scope.current().keys.enc`, AAD `table.column`, format `enc1:` + base64url(nonce‖ct‖tag). `vault.indexValue(lowercase)` derives the blind index for `decks.name_key`. Only `node:crypto` primitives. No custom crypto.
+- **Adding a content column checklist:** (1) add `vault.seal` on every INSERT/UPDATE and `vault.open` on every SELECT in the owning box, including import/export, update and search paths; (2) remove any DB `CHECK (length(...))` / `json_valid(...)` on the encrypted column (ciphertext is larger); (3) add the column to `ENCRYPTED` in `test/encryption.test.ts` and add a canary to `writeAllCanaries`; (4) if it needs lookup/sort, add a blind index or JS-side sort; (5) re-run typecheck + tests + crypto review.
+- **Plaintext metadata (documented):** ids, positions, timestamps, SRS numerics/`due_at`, `ignored`, ratings, `prev_state_json`, `question_order_json`, question kind, status, scores, `graded_by`, `source`, counts, `decks.name_key`.
+- **Schema/migrations:** `schema.sql` is the v6 base; migrations in `store.migrate()` are guarded and never renumber. Opening a v1–v5 user DB as a normal user DB is an error; only `migrate:legacy` may read it. DB columns are snake_case; JS writes ISO timestamps.
+- **Constraints:** deck names unique via blind index `name_key` (NOCASE semantics replicated in JS); one quiz per deck; questions unique per `(quiz_id, position)`; answers unique per `(attempt_id, question_id)`.
+- **Errors:** `AppError(code, ...)`. Codes include `UNAUTHENTICATED` → 401. `FORBIDDEN` → 403. HTTP envelope `{code,message,field?,hint?}`.
+- **Auth:** invite-only registration. `setup` only with zero users (first user is admin). Admins manage accounts but never see other users' content or keys. Sessions are memory-only; logout/t TTL/disable clears them. Login throttling per username + IP with identical unknown-user/wrong-passphrase responses.
+- **MCP:** `/mcp` uses `Authorization: Bearer msk_<tokenId>.<secret>` only (never query strings), validates Origin when present, has per-IP failed-auth throttling and per-token body/rate limits, and is stateless (`enableJsonResponse`, no session id). GET/DELETE → 405. A read-only token does not register mutating tools. A web-session cookie does not authenticate `/mcp`. Tool names/descriptions/input schemas are pinned by `test/fixtures/mcp-tools.snapshot.json`.
+- **Web:** no bundler. `index.html` import map + hashed CSP; module scripts are `.js` URLs transpiled from `.ts` on request. `?mock=1` and `?mock=1&auth=locked` keep working; edit SCSS, never generated CSS (`web/scss/app.scss` is orphaned).
+- **Security:** Host/Origin allow-list on every request; CSP (`script-src 'self' 'sha256-<importmap>'`, no unsafe-inline), `nosniff`, `no-referrer`, `X-Frame-Options: DENY`, HSTS when https. Mutating `/api` routes require JSON content-type and have a 2 MiB cap. Never log secrets; redact `Authorization`/`Cookie`.
 
-## HTTP routes (in `src/http/app.ts`)
+## HTTP routes (`src/http/app.ts`)
 
-Decks: `GET/POST /api/decks`, `PATCH/DELETE /api/decks/:id` · Cards: `GET/POST /api/cards`, `PATCH /api/cards/:id`, `PATCH /api/cards/:id/schedule`, `DELETE /api/cards` · Review: `GET /api/review/queue`, `POST /api/review`, `POST /api/review/undo` · Quizzes: `GET/POST /api/quizzes`, `GET/DELETE /api/quizzes/:id`, `POST /api/quizzes/:id/questions` · `POST /api/import` · Attempts: `POST /api/attempts`, `POST /api/attempts/restart`, `GET /api/attempts`, `GET /api/attempts/:id`, `PATCH /api/attempts/:id/answers/:qid`, `POST /api/attempts/:id/submit` · Grading: `GET /api/grading/pending`, `POST /api/grading/:id` · `GET /api/stats` · `POST /api/latex/validate` · `GET/PUT /api/ui/context` · `GET /api/events` (SSE). Unmatched paths fall through to static/SPA for **GET/HEAD only**; other methods and unknown `/api/*` get a JSON 404.
-
-## MCP tools (in `src/mcp/stdio.ts`)
-
-`deck_create/list/delete/update`, `card_add/update/schedule/delete/search`,
-`quiz_create/add_questions/get/list/update/delete/outline`,
-`question_update/delete`, `study_next_due`, `study_stats`, `attempt_list`,
-`attempts_pending_grading`, `answer_grade`, `latex_validate`, `current_context`.
-Unlike the HTTP review-queue endpoint, `study_next_due` requires a `deck` argument.
-All return `{ok:true, ...}` on success or `{code, message, field, hint}` with `isError:true`.
+Public: `GET /api/auth/status`, `POST /api/auth/{setup,login,logout,recover,register}`.
+Admin (session + admin): `/api/admin/users` GET, `/api/admin/invites` GET/POST,
+`PATCH /api/admin/users/:id`, `DELETE /api/admin/users/:id`.
+Session-only: `/api/agent-tokens` GET/POST, `DELETE /api/agent-tokens/:id`, `GET /api/export`,
+`/api/events` (SSE), decks/cards/review/quizzes/import/attempts/grading/stats/latex/ui-context
+as before. `POST /mcp` is the MCP endpoint (bearer auth, not a cookie route).
 
 ## Tests
 
-- `test/http.test.ts`, `test/context.test.ts`, `test/schedule.test.ts` — `bun:test` style. The `app.request(...)` suites send `Host: 127.0.0.1:3000`; all reset to an in-memory DB per test.
-- `test/smoke.test.ts`, `test/markdown.test.ts` — `node:test` style (runs under Bun): SRS intervals, grader, box CRUD/import/delete/conflicts, and markdown/KaTeX rendering + sanitizer behavior.
-- Run all with `bun test` (single file: `bun test test/http.test.ts`); typecheck with `bun run typecheck`. Both must pass before finishing a change. No linter/formatter is configured — strict `tsc` + tests are the only automated checks.
-
-## Housekeeping
-
-- Generated/gitignored — don't hand-edit or commit: `web/css/`, `web/og-image.png`, `data/`, `*.db*`, `node_modules/`, `.playwright-mcp/` (browser artifacts/logs), `dist/`. Source of truth: `web/scss/`, `web/*.svg`, `src/boxes/store/schema.sql`.
-- `web/messages.json` holds user-facing copy; it is loaded once at page startup and a random time-of-day greeting is picked, so refresh to see edits. Edit there, not in views. `web/favicon.svg` is served as-is; only `web/og-image.svg` is rendered into a generated PNG.
-- Keep changes scoped and consistent with surrounding style; when adding a domain feature, wire it through box → HTTP route → MCP tool → `Api` interface/mock, and add tests.
+`bun test`: scope, vault primitives (RFC 5869 KATs), auth, HTTP auth/security, MCP parity/auth,
+encryption canary + column coverage, export round trip, migration, plus the original smoke/http/
+context/schedule/markdown suites. Gate: `bun run typecheck && bun test`. No linter configured.
