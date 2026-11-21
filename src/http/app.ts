@@ -211,7 +211,8 @@ const routes = app
   .post('/api/admin/invites', v('json', S.CreateInviteSchema), async (c) => {
     const s = currentSession(c)!;
     const b = c.req.valid('json');
-    return c.json({ ok: true as const, ...await auth.createInvite(s.userId, b.ttl_seconds) });
+    const invite = await auth.createInvite(s.userId, b.ttl_seconds);
+    return c.json({ ok: true as const, code: invite.code, expires_at: invite.expiresAt });
   })
   .patch('/api/admin/users/:id', v('json', S.SetDisabledSchema), (c) => {
     const id = parseId(c.req.param('id'));
@@ -235,7 +236,11 @@ const routes = app
   .post('/api/agent-tokens', v('json', S.AgentTokenCreateSchema), (c) => {
     const s = currentSession(c)!;
     const b = c.req.valid('json');
-    return c.json({ ok: true as const, ...auth.createAgentToken(s.userId, b.label, b.read_only ? 'read' : 'write', s.keys) });
+    const token = auth.createAgentToken(s.userId, b.label, b.read_only ? 'read' : 'write', s.keys);
+    return c.json({
+      ok: true as const, token: token.token, token_id: token.tokenId,
+      label: token.label, mode: token.mode, created_at: token.createdAt,
+    });
   })
   .delete('/api/agent-tokens/:id', (c) => {
     const s = currentSession(c)!;

@@ -164,32 +164,18 @@ const real: Api = {
 
   adminUsers: () => unwrap(rpc.api.admin.users.$get()),
   adminInvites: () => unwrap(rpc.api.admin.invites.$get()),
-  async createInvite(ttlSeconds) {
-    // The current server returns `expiresAt`; accept the documented
-    // `expires_at` spelling too so the UI works with either revision.
-    const res = await unwrap<{
-      ok: true; code: string; expires_at?: string; expiresAt?: string;
-    }>(rpc.api.admin.invites.$post({ json: ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds } }));
-    return { ok: true as const, code: res.code, expires_at: res.expires_at ?? res.expiresAt ?? '' };
-  },
+  createInvite: (ttlSeconds) => unwrap(rpc.api.admin.invites.$post({
+    json: ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds },
+  })),
   setUserDisabled: (id, disabled) => unwrap(rpc.api.admin.users[':id'].$patch({
     param: { id: String(id) }, json: { disabled },
   })),
   deleteUser: (id) => unwrap(rpc.api.admin.users[':id'].$delete({ param: { id: String(id) } })),
 
   agentTokens: () => unwrap(rpc.api['agent-tokens'].$get()),
-  async createAgentToken(label, readOnly) {
-    const res = await unwrap<{
-      ok: true; token: string; token_id?: string; tokenId?: string;
-      label: string; mode: 'read' | 'write'; created_at?: string; createdAt?: string;
-    }>(rpc.api['agent-tokens'].$post({ json: { label, read_only: readOnly } }));
-    return {
-      ok: true as const, token: res.token,
-      token_id: res.token_id ?? res.tokenId ?? '',
-      label: res.label, mode: res.mode,
-      created_at: res.created_at ?? res.createdAt ?? '',
-    };
-  },
+  createAgentToken: (label, readOnly) => unwrap(rpc.api['agent-tokens'].$post({
+    json: { label, read_only: readOnly },
+  })),
   revokeAgentToken: (id) => unwrap(rpc.api['agent-tokens'][':id'].$delete({ param: { id } })),
   exportBundle: () => unwrap(rpc.api.export.$get()),
 
@@ -287,6 +273,17 @@ const real: Api = {
       try { cb(JSON.parse(e.data) as ChangeEvent); } catch { /* ignore malformed frames */ }
     };
     es.addEventListener('change', handler);
+    // An EventSource error has no status code; confirm the session is really
+    // gone before locking (network blips must not close the app).
+    es.addEventListener('error', () => {
+      if (useMock) return;
+      void fetch('/api/auth/status')
+        .then((r) => r.json())
+        .then((s: { status?: string }) => {
+          if (s.status !== 'unlocked') window.dispatchEvent(new CustomEvent('auth:locked'));
+        })
+        .catch(() => undefined);
+    });
     return () => es.close();
   },
 };

@@ -41,6 +41,13 @@ describe('review hardening', () => {
     }
   });
 
+  test('an SSE error confirms the session before showing the gate', () => {
+    const src = readFileSync('web/api.ts', 'utf8');
+    expect(src).toMatch(/es\.addEventListener\('error'/);
+    expect(src).toMatch(/fetch\('\/api\/auth\/status'\)/);
+    expect(src).toMatch(/new CustomEvent\('auth:locked'\)/);
+  });
+
   test('mock mode has no circular ESM import with api.ts', () => {
     const src = readFileSync('web/api.mock.ts', 'utf8');
     expect(src).not.toMatch(/import\s*\{\s*ApiError\s*\}\s*from\s*['"]\.\/api\.js['"]/);

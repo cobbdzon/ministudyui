@@ -296,6 +296,7 @@ describe('account lifecycle over HTTP', () => {
     expect(created.res.status).toBe(200);
     const code = String(created.json.code ?? '');
     expect(code.startsWith('msi-')).toBe(true);
+    expect(typeof created.json.expires_at).toBe('string');
 
     const registered = await call('/api/auth/register', {
       method: 'POST',
@@ -412,7 +413,9 @@ describe('agent tokens over HTTP', () => {
     });
     expect(created.res.status).toBe(200);
     const token = String(created.json.token ?? '');
-    const tokenId = String(created.json.tokenId ?? '');
+    const tokenId = String(created.json.token_id ?? '');
+    expect(typeof tokenId).toBe('string');
+    expect(typeof created.json.created_at).toBe('string');
     const secret = token.split('.')[1] ?? '';
     expect(TOKEN_RE.test(token)).toBe(true);
     expect(auth.unlockWithAgentToken(token).userId).toBe(1);
