@@ -2,6 +2,9 @@ import { api, errorMessage } from './api.js';
 import type { AdminUser, AgentToken, AuthStatus, AuthUser } from './api.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './math.js';
+import {
+  shellMenu, visibleShellMenu, type ShellMenuAction, type ShellMenuItem, type ShellTheme,
+} from './shell-menu.js';
 import { messages } from './messages.js';
 import { busy, confirmDanger, dialog, greeting, relTime, toast, type DialogAction } from './ui.js';
 import type { AppContext, RoutedViewId, ViewId, ViewModule } from './context.js';
@@ -60,8 +63,12 @@ function shell(): void {
         <button class="icon-btn" id="theme-toggle" aria-label="Switch color scheme" title="Switch color scheme">
           <span id="theme-icon">${icon('dark_mode')}</span>
         </button>
+        <button class="icon-btn" id="lock" aria-label="Lock account" title="Lock account">
+          ${icon('lock')}
+        </button>
       </div>
     </nav>
+    <div class="account-menu" id="account-menu" popover="auto" role="menu" aria-label="Account" hidden></div>
     <main class="screen" id="main" tabindex="-1"></main>
     <nav class="bottom-nav" aria-label="Main">
       ${NAV.map((n) => navItem(n, 'bottom-nav__item')).join('')}
@@ -119,6 +126,43 @@ function openShortcuts(): void {
   });
 }
 
+/* ---------- Shell menu (rail popover + mobile sheet) ---------- */
+
+function currentTheme(): ShellTheme {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function themeAction(): { next: Theme; icon: string; label: string } {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next: Theme = current === 'dark' ? 'light' : 'dark';
+  return { next, icon: next === 'dark' ? 'dark_mode' : 'light_mode', label: `Switch to ${next} theme` };
+}
+
+function runShellAction(action: ShellMenuAction): void {
+  if (action === 'theme') {
+    applyTheme(themeAction().next);
+    syncThemeRows();
+    return;
+  }
+  if (action === 'import') importView.openImport(ctx);
+  if (action === 'shortcuts') openShortcuts();
+  if (action === 'passphrase') openPassphraseDialog();
+  if (action === 'agent') void openAgentDialog();
+  if (action === 'export') void openExportDialog();
+  if (action === 'admin') void openAdminDialog();
+  if (action === 'lock') void lockNow();
+}
+
+function syncThemeRows(): void {
+  const theme = themeAction();
+  document.querySelectorAll<HTMLElement>('[data-shell-action="theme"]').forEach((row) => {
+    const iconEl = row.querySelector<HTMLElement>('.sheet__icon, .account-menu__icon');
+    const labelEl = row.querySelector<HTMLElement>('.sheet__label, .account-menu__label');
+    if (iconEl) iconEl.innerHTML = icon(theme.icon);
+    if (labelEl) labelEl.textContent = theme.label;
+  });
+}
+
 /* ---------- More sheet (mobile utilities) ---------- */
 
 let moreSheet: HTMLDialogElement | null = null;
@@ -131,15 +175,19 @@ function closeMoreSheet(): void {
   setTimeout(() => sheet.close(), 170);
 }
 
-function themeAction(): { next: Theme; icon: string; label: string } {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next: Theme = current === 'dark' ? 'light' : 'dark';
-  return { next, icon: next === 'dark' ? 'dark_mode' : 'light_mode', label: `Switch to ${next} theme` };
+function sheetRow(item: ShellMenuItem): string {
+  return `<button class="sheet__action" type="button" data-shell-action="${item.id}">
+    <span class="sheet__icon">${icon(item.icon)}</span>
+    <span class="sheet__label">${escapeHtml(item.label)}</span>
+    ${icon('chevron_right', 'icon--sm sheet__chevron')}
+  </button>`;
 }
 
 function openMoreSheet(): void {
   if (moreSheet) return;
-  const theme = themeAction();
+  const items = visibleShellMenu(shellMenu(currentTheme()), !!authUser?.is_admin);
+  const account = items.filter((item) => item.group !== 'app');
+  const apps = items.filter((item) => item.group === 'app');
   const sheet = document.createElement('dialog');
   sheet.className = 'sheet';
   sheet.setAttribute('aria-label', 'More options');
@@ -147,46 +195,13 @@ function openMoreSheet(): void {
     <div class="sheet__inner">
       <div class="sheet__grab" aria-hidden="true"></div>
       <h2 class="sheet__title">More options</h2>
-      <div class="sheet__list">
-        <button class="sheet__action" type="button" data-sheet-action="import">
-          <span class="sheet__icon">${icon('upload')}</span>
-          <span class="sheet__label">Import from AI</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
-        <button class="sheet__action" type="button" data-sheet-action="passphrase">
-          <span class="sheet__icon">${icon('edit')}</span>
-          <span class="sheet__label">Change passphrase</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
-        <button class="sheet__action" type="button" data-sheet-action="agent">
-          <span class="sheet__icon">${icon('auto_awesome')}</span>
-          <span class="sheet__label">Agent access</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
-        <button class="sheet__action" type="button" data-sheet-action="export">
-          <span class="sheet__icon">${icon('download')}</span>
-          <span class="sheet__label">Export data</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
-        ${
-          authUser?.is_admin
-            ? `<button class="sheet__action" type="button" data-sheet-action="admin">
-          <span class="sheet__icon">${icon('fact_check')}</span>
-          <span class="sheet__label">Admin panel</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>`
-            : ''
-        }
-        <button class="sheet__action" type="button" data-sheet-action="shortcuts">
-          <span class="sheet__icon">${icon('keyboard')}</span>
-          <span class="sheet__label">Keyboard shortcuts</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
-        <button class="sheet__action" type="button" data-sheet-action="theme">
-          <span class="sheet__icon">${icon(theme.icon)}</span>
-          <span class="sheet__label">${theme.label}</span>
-          ${icon('chevron_right', 'icon--sm sheet__chevron')}
-        </button>
+      ${authUser ? `<p class="sheet__subtitle">Signed in as ${escapeHtml(authUser.username)}</p>` : ''}
+      <div class="sheet__group">
+        <h3 class="sheet__group-title">Account</h3>
+        <div class="sheet__list">${account.map(sheetRow).join('')}</div>
+      </div>
+      <div class="sheet__group">
+        <div class="sheet__list">${apps.map(sheetRow).join('')}</div>
       </div>
     </div>`;
   document.body.appendChild(sheet);
@@ -198,7 +213,7 @@ function openMoreSheet(): void {
   });
   sheet.addEventListener('close', () => {
     sheet.remove();
-    document.getElementById('more')?.focus();
+    if (!gateEl && !document.querySelector('dialog[open]')) document.getElementById('more')?.focus();
   });
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet) {
@@ -206,25 +221,15 @@ function openMoreSheet(): void {
       return;
     }
     const target = e.target instanceof Element ? e.target : null;
-    const action = target?.closest<HTMLElement>('[data-sheet-action]');
+    const action = target?.closest<HTMLElement>('[data-shell-action]');
     if (!action) return;
-    const kind = action.dataset.sheetAction;
+    const kind = action.dataset.shellAction as ShellMenuAction;
     if (kind === 'theme') {
-      applyTheme(themeAction().next);
-      const updated = themeAction();
-      const iconEl = action.querySelector<HTMLElement>('.sheet__icon');
-      const labelEl = action.querySelector<HTMLElement>('.sheet__label');
-      if (iconEl) iconEl.innerHTML = icon(updated.icon);
-      if (labelEl) labelEl.textContent = updated.label;
+      runShellAction(kind);
       return;
     }
     closeMoreSheet();
-    if (kind === 'import') importView.openImport(ctx);
-    if (kind === 'shortcuts') openShortcuts();
-    if (kind === 'passphrase') openPassphraseDialog();
-    if (kind === 'agent') void openAgentDialog();
-    if (kind === 'export') void openExportDialog();
-    if (kind === 'admin') void openAdminDialog();
+    runShellAction(kind);
   });
   sheet.showModal();
 }
@@ -234,16 +239,155 @@ function openMoreSheet(): void {
 let authUser: AuthUser | null = null;
 let unlocked = false;
 
+function accountMenuItem(item: ShellMenuItem): string {
+  return `<button class="account-menu__item" type="button" role="menuitem" data-shell-action="${item.id}">
+    <span class="account-menu__icon">${icon(item.icon)}</span>
+    <span class="account-menu__label">${escapeHtml(item.label)}</span>
+  </button>`;
+}
+
+function renderAccountMenu(): string {
+  if (!authUser) return '';
+  const items = visibleShellMenu(shellMenu(currentTheme()), !!authUser.is_admin);
+  const account = items.filter((item) => item.group === 'account');
+  const session = items.filter((item) => item.group === 'session');
+  return `
+    <div class="account-menu__head" role="presentation">
+      <span class="account-menu__name">${escapeHtml(authUser.username)}</span>
+      ${authUser.is_admin ? '<span class="account-menu__badge">Admin</span>' : ''}
+    </div>
+    ${account.map(accountMenuItem).join('')}
+    <hr class="account-menu__divider">
+    ${session.map(accountMenuItem).join('')}`;
+}
+
+let accountMenuOpen = false;
+let accountMenuReturnFocus = false;
+
+function finishAccountMenuClose(): void {
+  if (!accountMenuOpen) return;
+  const menu = document.getElementById('account-menu');
+  const trigger = document.getElementById('account-menu-trigger');
+  const restore = accountMenuReturnFocus;
+  accountMenuOpen = false;
+  accountMenuReturnFocus = false;
+  if (menu) {
+    menu.hidden = true;
+    menu.classList.remove('is-open');
+  }
+  trigger?.setAttribute('aria-expanded', 'false');
+  if (restore && trigger) trigger.focus({ preventScroll: true });
+}
+
+function closeAccountMenu(restoreFocus = false): void {
+  const menu = document.getElementById('account-menu');
+  if (!menu || !accountMenuOpen) return;
+  accountMenuReturnFocus = restoreFocus;
+  if (typeof menu.hidePopover === 'function' && menu.matches(':popover-open')) {
+    menu.hidePopover();
+  }
+  finishAccountMenuClose();
+}
+
+function positionAccountMenu(trigger: HTMLElement, menu: HTMLElement): void {
+  const anchor = trigger.getBoundingClientRect();
+  const box = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(anchor.right + 12, window.innerWidth - box.width - 8));
+  const top = Math.max(8, Math.min(anchor.top, window.innerHeight - box.height - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function openAccountMenu(): void {
+  const trigger = document.getElementById('account-menu-trigger');
+  const menu = document.getElementById('account-menu');
+  if (!trigger || !menu || !authUser || accountMenuOpen) return;
+  menu.innerHTML = renderAccountMenu();
+  menu.hidden = false;
+  menu.style.visibility = 'hidden';
+  if (typeof menu.showPopover === 'function') menu.showPopover();
+  menu.classList.add('is-open');
+  positionAccountMenu(trigger, menu);
+  menu.style.visibility = '';
+  accountMenuOpen = true;
+  trigger.setAttribute('aria-expanded', 'true');
+  menu.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+}
+
+function wireAccountMenu(): void {
+  document.getElementById('account-menu-trigger')?.addEventListener('click', () => {
+    if (accountMenuOpen) closeAccountMenu(true);
+    else openAccountMenu();
+  });
+}
+
+function wireAccountMenuSurface(): void {
+  const menu = document.getElementById('account-menu');
+  if (!menu) return;
+  menu.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const item = target?.closest<HTMLElement>('[data-shell-action]');
+    if (!item) return;
+    const action = item.dataset.shellAction as ShellMenuAction;
+    closeAccountMenu(true);
+    runShellAction(action);
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (!accountMenuOpen) return;
+    const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAccountMenu(true);
+      return;
+    }
+    if (event.key === 'Tab') {
+      closeAccountMenu(false);
+      return;
+    }
+    let next: number | null = null;
+    if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % items.length;
+    else if (event.key === 'ArrowUp') next = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = items.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    items[next]?.focus({ preventScroll: true });
+  });
+  menu.addEventListener('toggle', (event) => {
+    const state = (event as Event & { newState?: string }).newState;
+    const trigger = document.getElementById('account-menu-trigger');
+    if (state === 'open') {
+      accountMenuOpen = true;
+      trigger?.setAttribute('aria-expanded', 'true');
+    } else if (state === 'closed') {
+      finishAccountMenuClose();
+    }
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!accountMenuOpen) return;
+    const trigger = document.getElementById('account-menu-trigger');
+    const target = event.target as Node | null;
+    if (menu.contains(target) || trigger?.contains(target)) return;
+    closeAccountMenu(false);
+  });
+}
+
 function updateAccountUI(): void {
   const slot = document.getElementById('rail-account');
   if (!slot) return;
-  slot.innerHTML = authUser
-    ? `<span class="rail-account__name" title="Signed in as ${escapeHtml(authUser.username)}">${escapeHtml(authUser.username)}</span>
-       <button class="rail-account__lock" type="button" id="lock" aria-label="Lock account" title="Lock account">
-         ${icon('arrow_back', 'icon--sm')}<span>Lock</span>
-       </button>`
-    : '';
-  slot.querySelector('#lock')?.addEventListener('click', () => { void lockNow(); });
+  if (!authUser) {
+    closeAccountMenu(false);
+    slot.innerHTML = '';
+    return;
+  }
+  const initial = authUser.username.trim().charAt(0).toUpperCase() || '?';
+  slot.innerHTML = `<button class="rail-account__avatar" id="account-menu-trigger" type="button"
+    aria-label="Account: ${escapeHtml(authUser.username)}"
+    title="Account: ${escapeHtml(authUser.username)}"
+    aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">${escapeHtml(initial)}</button>`;
+  wireAccountMenu();
 }
 
 function closeOpenDialogs(): void {
@@ -1237,7 +1381,9 @@ document.getElementById('theme-toggle')?.addEventListener('click', () => {
 });
 document.getElementById('shortcuts')?.addEventListener('click', openShortcuts);
 document.getElementById('import')?.addEventListener('click', () => importView.openImport(ctx));
+document.getElementById('lock')?.addEventListener('click', () => { void lockNow(); });
 document.getElementById('more')?.addEventListener('click', openMoreSheet);
+wireAccountMenuSurface();
 updateAccountUI();
 
 document.addEventListener('keydown', (e) => {

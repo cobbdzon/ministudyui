@@ -70,7 +70,8 @@
   @include press(0.94);
 }
 
-.sheet__action {
+.sheet__action,
+.account-menu__item {
   transition:
     background var(--mi-t) var(--mi-standard),
     transform var(--mi-t) var(--mi-spring);
