@@ -2231,44 +2231,82 @@
 .gate__scrim {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--md-sys-color-scrim) 52%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 38%, transparent);
+  backdrop-filter: blur(3px);
 }
 
 .gate__card {
   position: relative;
-  width: min(100%, var(--layout-auth-card));
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-5);
+  width: min(100%, 740px);
   padding: var(--space-5);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-extra-large);
+  border-radius: var(--md-sys-shape-corner-large);
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface);
-  box-shadow: var(--md-sys-elevation-level2);
+  box-shadow: var(--md-sys-elevation-level1);
 }
 
-.gate__brand {
+.gate__aside {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-right: var(--space-5);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.gate__identity {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font: var(--md-sys-typescale-title-large);
+}
+
+// The sidebar mark, scaled down — one component across the whole app.
+.brand--gate {
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.gate__wordmark {
   color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-large);
 }
 
-.gate__mark {
+.gate__decoration {
+  align-self: center;
+  color: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  font: 400 clamp(6rem, 14vw, 11rem)/1 var(--font-content);
+  user-select: none;
+}
+
+.gate__aside-foot {
   display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  font: var(--md-sys-typescale-display-small);
+  gap: var(--space-1);
 }
 
-.gate__tagline {
-  margin: var(--space-2) 0 var(--space-5);
+.gate__greeting {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium);
+}
+
+.gate__aside-note {
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-body-small);
+  line-height: 1.5;
+}
+
+.gate__encrypted {
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small);
+}
+
+.gate__main {
+  min-width: 0;
 }
 
 .gate__title {
@@ -2294,13 +2332,72 @@
   gap: 6px;
 }
 
+.gate__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .gate__label {
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-medium);
 }
 
+.gate__field-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .gate__field .input {
   width: 100%;
+}
+
+.gate__input-wrap {
+  position: relative;
+  display: block;
+}
+
+.gate__input-wrap .input {
+  padding-right: 64px;
+}
+
+.gate__reveal {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: var(--space-2);
+  transform: translateY(-50%);
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small);
+  cursor: pointer;
+}
+
+.gate__reveal:hover,
+.gate__reveal:focus-visible {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+}
+
+.gate__caps {
+  position: absolute;
+  inset-block-end: -1.1em;
+  inset-inline-end: 0;
+  display: none;
+  color: var(--md-sys-color-error);
+  font: var(--md-sys-typescale-label-small);
+}
+
+.gate__caps.is-on {
+  display: block;
 }
 
 .gate__field .input[aria-invalid="true"] {
@@ -2314,12 +2411,51 @@
   font: var(--md-sys-typescale-body-small);
 }
 
+.gate__error:not(:empty) {
+  animation: gate-shake 240ms ease-in-out;
+}
+
+@keyframes gate-shake {
+  25% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+}
+
+.btn.is-loading::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-inline-end: 8px;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: gate-spin 700ms linear infinite;
+}
+
+@keyframes gate-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate__error:not(:empty),
+  .btn.is-loading::before {
+    animation: none;
+  }
+}
+
 .gate__links {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-2);
   margin-top: var(--space-4);
+}
+
+.gate__links--divided {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .gate__link {
@@ -2519,13 +2655,32 @@
   gap: var(--space-1);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .gate {
     padding: var(--space-2);
   }
 
+  .gate__decoration {
+    display: none;
+  }
+
   .gate__card {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
     padding: var(--space-4);
+  }
+
+  .gate__aside {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 0 var(--space-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .gate__aside-note {
+    display: none;
   }
 
   .gate__title {

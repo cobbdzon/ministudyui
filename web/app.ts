@@ -3,7 +3,7 @@ import type { AdminUser, AgentToken, AuthStatus, AuthUser } from './api.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './math.js';
 import { messages } from './messages.js';
-import { busy, confirmDanger, dialog, relTime, toast, type DialogAction } from './ui.js';
+import { busy, confirmDanger, dialog, greeting, relTime, toast, type DialogAction } from './ui.js';
 import type { AppContext, RoutedViewId, ViewId, ViewModule } from './context.js';
 import type { ChangeEvent } from '../shared/types.js';
 import * as home from './views/home.js';
@@ -268,6 +268,8 @@ async function lockNow(): Promise<void> {
 interface AuthCopy {
   brand: string; tagline: string; username: string; passphrase: string;
   confirmPassphrase: string; recoveryKey: string; inviteCode: string;
+  showPassphrase: string; hidePassphrase: string; capsLock: string;
+  unlocking: string; encryptedNote: string;
   setup: { title: string; intro: string; submit: string; toLogin: string };
   login: { title: string; intro: string; submit: string; toRecover: string; toRegister: string };
   recover: { title: string; intro: string; submit: string; toLogin: string };
@@ -343,16 +345,32 @@ function closeGate(): void {
 
 interface FieldOptions {
   required?: boolean; minlength?: number; value?: string; mono?: boolean; autocomplete?: string;
+  /** Right-aligned link markup inside the label row. */
+  labelLink?: string;
+  /** Adds a show/hide toggle and Caps Lock warning to a password field. */
+  reveal?: boolean;
 }
 function inputField(
   id: string, name: string, label: string, type: string, autocomplete: string, opts: FieldOptions = {},
 ): string {
+  const input = `<input class="input${opts.mono ? ' input--mono' : ''}" id="${id}" name="${name}" type="${type}"
+    autocomplete="${autocomplete}" spellcheck="false" aria-invalid="false"
+    ${opts.required ? 'required' : ''} ${opts.minlength ? `minlength="${opts.minlength}"` : ''}
+    value="${escapeHtml(opts.value ?? '')}">`;
+  const control = opts.reveal
+    ? `<span class="gate__input-wrap">${input}
+        <button class="gate__reveal" type="button" data-toggle-for="${id}"
+          aria-label="${escapeHtml(copy.showPassphrase)}" aria-pressed="false"
+          title="${escapeHtml(copy.showPassphrase)}">Show</button>
+        <span class="gate__caps" id="${id}-caps" aria-hidden="true">${escapeHtml(copy.capsLock)}</span>
+      </span>`
+    : input;
   return `<label class="gate__field" for="${id}">
-    <span class="gate__label">${escapeHtml(label)}</span>
-    <input class="input${opts.mono ? ' input--mono' : ''}" id="${id}" name="${name}" type="${type}"
-      autocomplete="${autocomplete}" spellcheck="false" aria-invalid="false"
-      ${opts.required ? 'required' : ''} ${opts.minlength ? `minlength="${opts.minlength}"` : ''}
-      value="${escapeHtml(opts.value ?? '')}">
+    <span class="gate__label-row">
+      <span class="gate__label">${escapeHtml(label)}</span>
+      ${opts.labelLink ?? ''}
+    </span>
+    ${control}
   </label>`;
 }
 
@@ -393,11 +411,24 @@ function wireGateForm(form: HTMLFormElement, submit: GateSubmit): void {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const original = button?.textContent ?? '';
+    if (button) {
+      button.style.minWidth = `${button.offsetWidth}px`;
+      button.textContent = copy.unlocking;
+      button.classList.add('is-loading');
+    }
     busy(button, true);
     const values = Object.fromEntries(fields.map((f) => [f.name, f.value]));
     void Promise.resolve(submit(values, fail))
       .catch((err: unknown) => fail(errorMessage(err, copy.errors.generic)))
-      .finally(() => busy(button, false));
+      .finally(() => {
+        busy(button, false);
+        if (button) {
+          button.classList.remove('is-loading');
+          button.textContent = original;
+          button.style.minWidth = '';
+        }
+      });
   });
 }
 
@@ -437,9 +468,9 @@ function wireCopy(root: ParentNode): void {
   });
 }
 
-function gateLinks(links: Array<[string, GateScreen]>): string {
+function gateLinks(links: Array<[string, GateScreen]>, divided = false): string {
   if (!links.length) return '';
-  return `<div class="gate__links">${links.map(([label, screen]) =>
+  return `<div class="gate__links${divided ? ' gate__links--divided' : ''}">${links.map(([label, screen]) =>
     `<button class="gate__link" type="button" data-gate-screen="${screen}">${escapeHtml(label)}</button>`,
   ).join('')}</div>`;
 }
@@ -456,8 +487,8 @@ function renderGate(screen: GateScreen): void {
     title = c.title; intro = c.intro;
     form = `
       ${inputField('gate-username', 'username', copy.username, 'text', 'username', { required: true })}
-      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10 })}
-      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true })}
+      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10, reveal: true })}
+      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true, reveal: true })}
       <button class="btn btn--filled btn--block" type="submit">${escapeHtml(c.submit)}</button>`;
     links = [[c.toLogin, 'login']];
   } else if (screen === 'login') {
@@ -465,16 +496,19 @@ function renderGate(screen: GateScreen): void {
     title = c.title; intro = c.intro;
     form = `
       ${inputField('gate-username', 'username', copy.username, 'text', 'username', { required: true })}
-      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'current-password', { required: true })}
+      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'current-password', {
+        required: true, reveal: true,
+        labelLink: `<button type="button" class="gate__field-link" data-gate-screen="recover">${escapeHtml(c.toRecover)}</button>`,
+      })}
       <button class="btn btn--filled btn--block" type="submit">${escapeHtml(c.submit)}</button>`;
-    links = [[c.toRecover, 'recover'], [c.toRegister, 'register']];
+    links = [[c.toRegister, 'register']];
   } else if (screen === 'recover') {
     const c = copy.recover;
     title = c.title; intro = c.intro;
     form = `
       ${inputField('gate-recovery', 'recovery_key', copy.recoveryKey, 'text', 'off', { required: true, mono: true })}
-      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10 })}
-      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true })}
+      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10, reveal: true })}
+      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true, reveal: true })}
       <button class="btn btn--filled btn--block" type="submit">${escapeHtml(c.submit)}</button>`;
     links = [[c.toLogin, 'login']];
   } else if (screen === 'register') {
@@ -483,8 +517,8 @@ function renderGate(screen: GateScreen): void {
     form = `
       ${inputField('gate-invite', 'invite_code', copy.inviteCode, 'text', 'off', { required: true, value: takeInviteFromHash(), mono: true })}
       ${inputField('gate-username', 'username', copy.username, 'text', 'username', { required: true })}
-      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10 })}
-      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true })}
+      ${inputField('gate-passphrase', 'passphrase', copy.passphrase, 'password', 'new-password', { required: true, minlength: 10, reveal: true })}
+      ${inputField('gate-confirm', 'confirm_passphrase', copy.confirmPassphrase, 'password', 'new-password', { required: true, reveal: true })}
       <p class="auth-disclosure">${escapeHtml(c.disclosure)}</p>
       <button class="btn btn--filled btn--block" type="submit">${escapeHtml(c.submit)}</button>`;
     links = [[c.toLogin, 'login']];
@@ -506,13 +540,25 @@ function renderGate(screen: GateScreen): void {
   gateEl.innerHTML = `
     <div class="gate__scrim" aria-hidden="true"></div>
     <div class="gate__card">
-      <div class="gate__brand"><span class="gate__mark" aria-hidden="true">∫</span>${escapeHtml(copy.brand)}</div>
-      <p class="gate__tagline">${escapeHtml(copy.tagline)}</p>
-      <h1 class="gate__title" id="gate-title">${escapeHtml(title)}</h1>
-      <p class="gate__intro">${escapeHtml(intro)}</p>
-      <p class="gate__error" role="status" aria-live="polite"></p>
-      ${screen === 'recovery' ? `<div class="gate__form">${form}</div>` : `<form class="gate__form">${form}</form>`}
-      ${gateLinks(links)}
+      <aside class="gate__aside" aria-hidden="true">
+        <span class="gate__identity">
+          <span class="brand brand--gate">∫</span>
+          <span class="gate__wordmark">ministudyui</span>
+        </span>
+        <span class="gate__decoration">∫</span>
+        <span class="gate__aside-foot">
+          <span class="gate__greeting">${escapeHtml(greeting())}</span>
+          <span class="gate__aside-note">${escapeHtml(copy.tagline)}</span>
+          <span class="gate__encrypted">${escapeHtml(copy.encryptedNote)}</span>
+        </span>
+      </aside>
+      <div class="gate__main">
+        <h1 class="gate__title" id="gate-title">${escapeHtml(title)}</h1>
+        <p class="gate__intro">${escapeHtml(intro)}</p>
+        <p class="gate__error" role="alert"></p>
+        ${screen === 'recovery' ? `<div class="gate__form">${form}</div>` : `<form class="gate__form">${form}</form>`}
+        ${gateLinks(links, screen === 'login')}
+      </div>
     </div>`;
 
   if (screen === 'recovery') {
@@ -534,6 +580,28 @@ function renderGate(screen: GateScreen): void {
     gateEl.querySelector<HTMLElement>('#gate-saved')?.focus();
     return;
   }
+
+  gateEl.querySelectorAll<HTMLButtonElement>('[data-toggle-for]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.toggleFor ?? '') as HTMLInputElement | null;
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(show));
+      const label = show ? copy.hidePassphrase : copy.showPassphrase;
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      input.focus();
+    });
+  });
+  gateEl.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach((input) => {
+    const warn = document.getElementById(`${input.id}-caps`);
+    const check = (e: KeyboardEvent) => warn?.classList.toggle('is-on', e.getModifierState('CapsLock'));
+    input.addEventListener('keydown', check);
+    input.addEventListener('keyup', check);
+    input.addEventListener('blur', () => warn?.classList.remove('is-on'));
+  });
 
   const formEl = gateEl.querySelector<HTMLFormElement>('.gate__form');
   if (!formEl) return;
@@ -601,7 +669,7 @@ function section(title: string, content: string): string {
 }
 
 function dialogError(): string {
-  return `<p class="gate__error" role="status" aria-live="polite"></p>`;
+  return `<p class="gate__error" role="alert"></p>`;
 }
 
 function wireDialogError(root: HTMLElement): (message: string, field?: string) => void {

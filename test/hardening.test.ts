@@ -41,6 +41,22 @@ describe('review hardening', () => {
     }
   });
 
+  test('auth gate keeps password-manager behaviour and accessible feedback', () => {
+    const app = readFileSync('web/app.ts', 'utf8');
+    const css = readFileSync('web/scss/views.scss', 'utf8');
+    const base = readFileSync('web/scss/components.scss', 'utf8');
+    expect(app).toMatch(/'password', 'current-password'/);
+    expect(app).toMatch(/'password', 'new-password'/);
+    expect(app).toMatch(/data-toggle-for/);
+    expect(app).toMatch(/aria-pressed/);
+    expect(app).toMatch(/getModifierState\('CapsLock'\)/);
+    expect(app).toMatch(/class="gate__error" role="alert"/);
+    expect(app).toMatch(/copy\.unlocking/);
+    expect(base).toMatch(/\.input:focus-visible/);
+    expect(css).toMatch(/@media \(max-width: 720px\)/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce/);
+  });
+
   test('an SSE error confirms the session before showing the gate', () => {
     const src = readFileSync('web/api.ts', 'utf8');
     expect(src).toMatch(/es\.addEventListener\('error'/);

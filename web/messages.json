@@ -31,6 +31,11 @@
     "username": "Username",
     "passphrase": "Passphrase",
     "confirmPassphrase": "Confirm passphrase",
+    "showPassphrase": "Show passphrase",
+    "hidePassphrase": "Hide passphrase",
+    "capsLock": "Caps Lock is on",
+    "unlocking": "Unlocking…",
+    "encryptedNote": "Your decks are encrypted at rest.",
     "recoveryKey": "Recovery key",
     "inviteCode": "Invite code",
     "setup": {

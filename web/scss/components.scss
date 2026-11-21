@@ -184,11 +184,11 @@
   border-color: var(--md-sys-color-on-surface-variant);
 }
 
-.input:focus,
-.textarea:focus {
-  outline: none;
-  border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+  border-color: var(--md-sys-color-outline);
 }
 
 .input--mono,
