@@ -226,8 +226,11 @@ export async function recoverWithKey(
   try { recoveryKey = vault.parseRecoveryKey(recoveryText); }
   catch { throw new AppError('UNAUTHENTICATED', 'Invalid credentials'); }
   const d = db();
-  const user = store.getOn<UserRow>(d, 'SELECT * FROM users WHERE recovery_id=?', [recoveryIdOf(recoveryKey)]);
-  if (!user || user.disabled_at) {
+  const rid = recoveryIdOf(recoveryKey);
+  const user = store.getOn<UserRow>(d, 'SELECT * FROM users WHERE recovery_id=?', [rid]);
+  const matched = vault.constantTimeEqual(
+    Buffer.from(rid, 'hex'), Buffer.from(user ? user.recovery_id : Buffer.alloc(32).toString('hex'), 'hex'));
+  if (!user || !matched || user.disabled_at) {
     vault.zero(recoveryKey);
     throw new AppError('UNAUTHENTICATED', 'Invalid credentials');
   }
@@ -275,6 +278,20 @@ function inviteHash(code: string): string {
   return sha256Hex(Buffer.from(code.trim().toLowerCase(), 'utf8'));
 }
 
+function validInvite(d: Database, code: string): InviteRow {
+  const hash = inviteHash(code);
+  const invite = store.getOn<InviteRow>(d, 'SELECT * FROM invites WHERE code_hash=?', [hash]);
+  // Compare the hash in constant time; do comparable work on a miss so the
+  // existence of a hash is not observable through timing.
+  const stored = invite ? Buffer.from(invite.code_hash, 'hex') : Buffer.alloc(32);
+  const matched = vault.constantTimeEqual(Buffer.from(hash, 'hex'), stored);
+  if (!invite || !matched || invite.used_at || invite.used_by ||
+      new Date(invite.expires_at).getTime() <= Date.now()) {
+    throw new AppError('VALIDATION', 'Invite is invalid, used or expired', 'invite');
+  }
+  return invite;
+}
+
 export function listInvites(): Array<Omit<InviteRow, 'code_hash'>> {
   const rows = store.allOn<InviteRow>(db(),
     'SELECT id, code_hash, created_by, expires_at, used_by, used_at, created_at FROM invites ORDER BY id DESC');
@@ -287,14 +304,13 @@ export async function registerWithInvite(
   checkUsername(username);
   checkPassphrase(passphrase);
   const d = db();
+  // Validate the invite BEFORE the two expensive scrypt calls: an unauthenticated
+  // caller must not be able to burn KDF work with random invite codes.
+  validInvite(d, code);
   const input: CreateInput = { username, passphrase, admin: false, kdfCost: opts?.kdfCost };
   const prepared = await prepareAccount(input, nextUserId(d));
   return store.txOn(d, () => {
-    const hash = inviteHash(code);
-    const invite = store.getOn<InviteRow>(d, 'SELECT * FROM invites WHERE code_hash=?', [hash]);
-    if (!invite || invite.used_at || invite.used_by || new Date(invite.expires_at).getTime() <= Date.now()) {
-      throw new AppError('VALIDATION', 'Invite is invalid, used or expired', 'invite');
-    }
+    const invite = validInvite(d, code); // recheck inside the transaction (single-use)
     const user = insertAccountInTx(d, input, prepared);
     store.runOn(d, 'UPDATE invites SET used_by=?, used_at=strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id=?',
       [user.id, invite.id]);
