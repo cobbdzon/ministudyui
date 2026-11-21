@@ -18,7 +18,7 @@ export type Source = 'user' | 'ai' | 'import';
 export type QuestionType = 'mcq' | 'multi' | 'numeric' | 'short' | 'latex';
 export type AttemptStatus = 'in_progress' | 'submitted' | 'graded';
 export type GradingStatus = 'pending' | 'graded';
-export type ErrorCode = 'VALIDATION' | 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'INTERNAL' | 'ERROR';
+export type ErrorCode = 'VALIDATION' | 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'UNAUTHENTICATED' | 'INTERNAL' | 'ERROR';
 
 // ---- database rows (match schema.sql exactly) ----
 export interface DeckRow { id: number; name: string; description: string; created_at: string }

@@ -14,9 +14,10 @@ import { v } from './validate.js';
 import type { AttemptRow, AnswerRow, DeckRef } from '../../shared/types.js';
 import * as S from '../../shared/schemas.js';
 
-type ErrStatus = 400 | 403 | 404 | 409 | 500;
+type ErrStatus = 400 | 401 | 403 | 404 | 409 | 500;
 const STATUS: Record<ErrorCode, ErrStatus> = {
-  VALIDATION: 400, FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409, INTERNAL: 500, ERROR: 500,
+  VALIDATION: 400, FORBIDDEN: 403, UNAUTHENTICATED: 401,
+  NOT_FOUND: 404, CONFLICT: 409, INTERNAL: 500, ERROR: 500,
 };
 
 const app = new Hono();

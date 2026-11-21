@@ -1,16 +1,14 @@
 // Production seed: first-initialization only. Creates the data directory and
 // migrates the SQLite schema, but inserts no data. Safe to run on every boot.
-import * as path from 'node:path';
-import { mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import * as store from '../src/boxes/store/index.js';
+import { dataDir, ensureDataDir } from '../src/boxes/paths.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = process.env.DB_PATH || path.join(ROOT, 'data', 'ministudy.db');
-
-mkdirSync(path.dirname(DB_PATH), { recursive: true });
-store.open(DB_PATH);
+// Temporary legacy file until the auth DB / per-user DBs land in Phase 7.
+ensureDataDir();
+const file = join(dataDir(), 'ministudy.db');
+store.open(file);
 store.migrate();
 store.close();
 
-console.log(`seed: ${DB_PATH} is ready (no data added).`);
+console.log(`seed: ${file} is ready (no data added).`);

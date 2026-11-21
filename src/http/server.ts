@@ -1,10 +1,11 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import * as store from '../boxes/store/index.js';
+import { dataDir, ensureDataDir } from '../boxes/paths.js';
 import { app } from './app.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-store.open(path.join(ROOT, 'data', 'ministudy.db'));
+// Temporary legacy file until per-user DBs are wired in Phase 5.
+ensureDataDir();
+store.open(join(dataDir(), 'ministudy.db'));
 store.migrate();
 
 const port = Number(process.env.PORT || 3000);

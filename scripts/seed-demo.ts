@@ -2,22 +2,21 @@
 // Safe to re-run: it does nothing once the database already has decks.
 // For a real, empty database use `bun run seed` instead.
 import type { SQLQueryBindings } from 'bun:sqlite';
-import * as path from 'node:path';
-import { mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import * as store from '../src/boxes/store/index.js';
+import * as scope from '../src/boxes/scope/index.js';
+import { dataDir, ensureDataDir } from '../src/boxes/paths.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = process.env.DB_PATH || path.join(ROOT, 'data', 'ministudy.db');
-
-// The server assumes data/ exists; create it here so `bun run start` works.
-mkdirSync(path.dirname(DB_PATH), { recursive: true });
-store.open(DB_PATH);
+// Temporary legacy file + bootstrap scope until Phase 7 rewrites seeds for tenancy.
+ensureDataDir();
+const legacyFile = join(dataDir(), 'ministudy.db');
+const db = store.open(legacyFile);
 store.migrate();
+scope.installTestFallback(scope.devContext(db));
 
 const existing = store.get<{ n: number }>('SELECT COUNT(*) AS n FROM decks')?.n ?? 0;
 if (existing > 0) {
-  console.log(`seed: ${DB_PATH} already has ${existing} deck(s); nothing to do.`);
+  console.log(`seed: ${legacyFile} already has ${existing} deck(s); nothing to do.`);
   store.close();
   process.exit(0);
 }
@@ -166,4 +165,4 @@ store.tx(() => {
 });
 
 store.close();
-console.log(`seed: ${DB_PATH} — ${decks.length} decks, ${cards.length} cards, ${quizzes.length} quizzes, ${attempts.length} attempts.`);
+console.log(`seed: ${legacyFile} — ${decks.length} decks, ${cards.length} cards, ${quizzes.length} quizzes, ${attempts.length} attempts.`);

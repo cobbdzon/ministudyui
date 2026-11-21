@@ -9,9 +9,15 @@ import * as attempts from '../boxes/attempts/index.js';
 import * as latex from '../boxes/latex/index.js';
 import * as context from '../boxes/context/index.js';
 import { asAppError } from '../boxes/errors.js';
+import * as scope from '../boxes/scope/index.js';
+import { dataDir, ensureDataDir } from '../boxes/paths.js';
+import { join } from 'node:path';
 
-store.open(process.env.DB_PATH || new URL('../../data/ministudy.db', import.meta.url).pathname);
+// Temporary legacy bootstrap; the whole stdio server is removed in Phase 6.
+ensureDataDir();
+const legacyDb = store.open(join(dataDir(), 'ministudy.db'));
 store.migrate();
+scope.installTestFallback(scope.devContext(legacyDb));
 
 const server = new McpServer({ name: 'ministudyui', version: '0.1.0' });
 
