@@ -1,4 +1,5 @@
 import * as store from '../store/index.js';
+import * as vault from '../vault/index.js';
 import { AppError, asAppError } from '../errors.js';
 import type {
   Bundle, CardAddInput, CardDeleteBoxInput, CardDeleteInput, CardRow, CardStateRow, CardUpdateBoxInput,
@@ -12,7 +13,7 @@ import type {
 function resolveDeck(deck: DeckRef): DeckRow {
   const r = typeof deck === 'number'
     ? store.get<DeckRow>('SELECT * FROM decks WHERE id=?', [deck])
-    : store.get<DeckRow>('SELECT * FROM decks WHERE name=? COLLATE NOCASE', [deck]);
+    : store.get<DeckRow>('SELECT * FROM decks WHERE name_key=?', [vault.indexValue(deck.toLowerCase())]);
   if (!r) throw new AppError('NOT_FOUND', 'deck not found');
   return r;
 }
@@ -38,12 +39,44 @@ function getRawQuestion(questionId: number): RawQuestion {
   return q;
 }
 
+// Decrypt field-encrypted columns before rows leave the box. Blind indexes
+// (decks.name_key) and all plaintext columns stay exactly as stored.
+function openDeck(row: DeckRow): DeckRow {
+  return {
+    ...row,
+    name: vault.open('decks', 'name', row.name)!,
+    description: vault.open('decks', 'description', row.description)!,
+  };
+}
+
+function openQuiz(row: QuizRow): QuizRow {
+  return {
+    ...row,
+    title: vault.open('quizzes', 'title', row.title)!,
+    description: vault.open('quizzes', 'description', row.description)!,
+  };
+}
+
+function openQuestion(row: RawQuestion): RawQuestion {
+  return {
+    ...row,
+    prompt: vault.open('questions', 'prompt', row.prompt)!,
+    choices_json: vault.open('questions', 'choices_json', row.choices_json),
+    answer_json: vault.open('questions', 'answer_json', row.answer_json)!,
+    explanation: vault.open('questions', 'explanation', row.explanation)!,
+  };
+}
+
 export function deckCreate({ name, description }: { name: string; description?: string }): DeckCreated {
   if (!name || name.length < 1 || name.length > 120) throw new AppError('VALIDATION', 'name length', 'name');
   const d = description || '';
   if (d.length > 2000) throw new AppError('VALIDATION', 'description too long', 'description');
+  const nameKey = vault.indexValue(name.toLowerCase());
+  if (store.get('SELECT id FROM decks WHERE name_key=?', [nameKey]))
+    throw new AppError('CONFLICT', 'deck name exists', 'name');
   try {
-    const r = store.run('INSERT INTO decks (name, description) VALUES (?,?)', [name, d]);
+    const r = store.run('INSERT INTO decks (name, description, name_key) VALUES (?,?,?)',
+      [vault.seal('decks', 'name', name), vault.seal('decks', 'description', d), nameKey]);
     return { id: r.lastInsertRowid, name, description: d };
   } catch (e: unknown) {
     if (asAppError(e).message.includes('UNIQUE')) throw new AppError('CONFLICT', 'deck name exists', 'name');
@@ -52,12 +85,21 @@ export function deckCreate({ name, description }: { name: string; description?: 
 }
 
 export function deckList(): DeckRow[] {
-  return store.all<DeckRow>('SELECT * FROM decks ORDER BY name');
+  // The old query relied on the column's NOCASE collation; names are encrypted
+  // now, so decrypt first and sort case-insensitively in JS.
+  return store.all<DeckRow>('SELECT * FROM decks')
+    .map(openDeck)
+    .sort((a, b) => {
+      const an = a.name.toLowerCase();
+      const bn = b.name.toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    });
 }
 
 export function deckDelete({ deck, confirmName, deleteQuizzes = false }: DeckDeleteBoxInput): OkResponse {
   const d = resolveDeck(deck);
-  if (confirmName !== d.name) throw new AppError('VALIDATION', 'confirm_name mismatch', 'confirm_name');
+  if (confirmName !== vault.open('decks', 'name', d.name))
+    throw new AppError('VALIDATION', 'confirm_name mismatch', 'confirm_name');
   store.tx(() => {
     if (deleteQuizzes) store.run('DELETE FROM quizzes WHERE deck_id=?', [d.id]);
     store.run('DELETE FROM decks WHERE id=?', [d.id]);
@@ -73,10 +115,14 @@ export function deckUpdate({ deck, name, description }: DeckUpdateBoxInput): { o
   if (description !== undefined && (typeof description !== 'string' || description.length > 2000))
     throw new AppError('VALIDATION', 'description too long', 'description');
   const d = resolveDeck(deck);
-  const newName = name !== undefined ? name : d.name;
-  const newDescription = description !== undefined ? description : d.description;
+  const newName = name !== undefined ? name : vault.open('decks', 'name', d.name)!;
+  const newDescription = description !== undefined ? description : vault.open('decks', 'description', d.description)!;
+  const nameKey = vault.indexValue(newName.toLowerCase());
+  if (store.get('SELECT id FROM decks WHERE name_key=? AND id<>?', [nameKey, d.id]))
+    throw new AppError('CONFLICT', 'deck name exists', 'name');
   try {
-    store.run('UPDATE decks SET name=?, description=? WHERE id=?', [newName, newDescription, d.id]);
+    store.run('UPDATE decks SET name=?, description=?, name_key=? WHERE id=?',
+      [vault.seal('decks', 'name', newName), vault.seal('decks', 'description', newDescription), nameKey, d.id]);
   } catch (e: unknown) {
     if (asAppError(e).message.includes('UNIQUE')) throw new AppError('CONFLICT', 'deck name exists', 'name');
     throw e;
@@ -98,7 +144,8 @@ export function cardAdd({ deck, cards }: CardAddInput): { card_ids: number[] } {
       const tags = c.tags || [];
       if (tags.length > 10) throw new AppError('VALIDATION', 'too many tags', `cards[${i}].tags`);
       const r = store.run('INSERT INTO cards (deck_id, front, back, tags_json, source) VALUES (?,?,?,?,?)',
-        [d.id, c.front, c.back, JSON.stringify(tags), c.source || 'ai']);
+        [d.id, vault.seal('cards', 'front', c.front), vault.seal('cards', 'back', c.back),
+          vault.seal('cards', 'tags_json', JSON.stringify(tags)), c.source || 'ai']);
       ids.push(r.lastInsertRowid);
     });
     return ids;
@@ -111,11 +158,12 @@ export function cardUpdate({ cardId, front, back, tags, deck }: CardUpdateBoxInp
   if (!c) throw new AppError('NOT_FOUND', 'card not found');
   let newDeck = c.deck_id;
   if (deck !== undefined) newDeck = resolveDeck(deck).id;
-  const newFront = front !== undefined ? front : c.front;
-  const newBack = back !== undefined ? back : c.back;
-  const newTags = tags !== undefined ? tags : JSON.parse(c.tags_json) as string[];
+  const newFront = front !== undefined ? front : vault.open('cards', 'front', c.front)!;
+  const newBack = back !== undefined ? back : vault.open('cards', 'back', c.back)!;
+  const newTags = tags !== undefined ? tags : JSON.parse(vault.open('cards', 'tags_json', c.tags_json)!) as string[];
   store.run('UPDATE cards SET deck_id=?, front=?, back=?, tags_json=?, updated_at=strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id=?',
-    [newDeck, newFront, newBack, JSON.stringify(newTags), cardId]);
+    [newDeck, vault.seal('cards', 'front', newFront), vault.seal('cards', 'back', newBack),
+      vault.seal('cards', 'tags_json', JSON.stringify(newTags)), cardId]);
   return { ok: true };
 }
 
@@ -133,16 +181,26 @@ export function cardSearch({ query, deck, tag, source, limit, offset }: {
 }): CardSearchResult {
   const lim = Math.min(Math.max(limit || 20, 1), 100);
   const off = offset || 0;
+  // Only plaintext predicates stay in SQL; query/tag filtering needs decrypted
+  // content, so it happens in JS after the candidate rows are fetched.
   let sql = 'SELECT c.*, cs.due_at, cs.ignored FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE 1=1';
   const params: (string | number)[] = [];
   if (deck !== undefined) { const d = resolveDeck(deck); sql += ' AND c.deck_id=?'; params.push(d.id); }
-  if (query) { sql += ' AND (c.front LIKE ? OR c.back LIKE ?)'; params.push('%' + query + '%', '%' + query + '%'); }
   if (source) { sql += ' AND c.source=?'; params.push(source); }
-  if (tag) { sql += ' AND EXISTS (SELECT 1 FROM json_each(c.tags_json) WHERE value=?)'; params.push(tag); }
-  sql += ' ORDER BY c.id LIMIT ? OFFSET ?';
-  params.push(lim, off);
-  const rows = store.all<CardWithState>(sql, params);
-  return { cards: rows, total: rows.length };
+  sql += ' ORDER BY c.id';
+  const candidates = store.all<CardWithState>(sql, params);
+  const q = query ? query.toLowerCase() : null;
+  const matched: CardWithState[] = [];
+  for (const row of candidates) {
+    const front = vault.open('cards', 'front', row.front)!;
+    const back = vault.open('cards', 'back', row.back)!;
+    const tagsJson = vault.open('cards', 'tags_json', row.tags_json)!;
+    if (q !== null && !front.toLowerCase().includes(q) && !back.toLowerCase().includes(q)) continue;
+    if (tag !== undefined && !(JSON.parse(tagsJson) as string[]).includes(tag)) continue;
+    matched.push({ ...row, front, back, tags_json: tagsJson });
+  }
+  const cards = matched.slice(off, off + lim);
+  return { cards, total: cards.length };
 }
 
 // A permissive shape accepted by validateQuestion. Callers pass either a
@@ -201,12 +259,15 @@ export function quizCreate({ title, description, deck, shuffle = false, question
   const qs = questions.map((q, i) => validateQuestion(q, i));
   return store.tx(() => {
     const r = store.run('INSERT INTO quizzes (title, description, deck_id, shuffle) VALUES (?,?,?,?)',
-      [title, description || '', deckId, shuffle ? 1 : 0]);
+      [vault.seal('quizzes', 'title', title), vault.seal('quizzes', 'description', description || ''),
+        deckId, shuffle ? 1 : 0]);
     const quizId = r.lastInsertRowid;
     qs.forEach((q, i) => {
       store.run('INSERT INTO questions (quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?)',
-        [quizId, i + 1, q.type, q.prompt, q.choices ? JSON.stringify(q.choices) : null,
-          JSON.stringify(q.answer), q.explanation, q.points]);
+        [quizId, i + 1, q.type, vault.seal('questions', 'prompt', q.prompt),
+          q.choices ? vault.seal('questions', 'choices_json', JSON.stringify(q.choices)) : null,
+          vault.seal('questions', 'answer_json', JSON.stringify(q.answer)),
+          vault.seal('questions', 'explanation', q.explanation), q.points]);
     });
     return { id: quizId, title };
   });
@@ -222,8 +283,10 @@ export function quizAddQuestions({ quizId, questions }: QuizAddQuestionsInput): 
     const ids: number[] = [];
     qs.forEach((q, i) => {
       const r = store.run('INSERT INTO questions (quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?)',
-        [quizId, maxPos + i + 1, q.type, q.prompt, q.choices ? JSON.stringify(q.choices) : null,
-          JSON.stringify(q.answer), q.explanation, q.points]);
+        [quizId, maxPos + i + 1, q.type, vault.seal('questions', 'prompt', q.prompt),
+          q.choices ? vault.seal('questions', 'choices_json', JSON.stringify(q.choices)) : null,
+          vault.seal('questions', 'answer_json', JSON.stringify(q.answer)),
+          vault.seal('questions', 'explanation', q.explanation), q.points]);
       ids.push(r.lastInsertRowid);
     });
     return { question_ids: ids };
@@ -236,9 +299,10 @@ export function quizGet({ quizId, includeAnswers }: QuizGetInput): {
     points: number; choices?: Choice[]; answer?: QuestionAnswer;
   }>;
 } {
-  const quiz = getQuiz(quizId);
+  const quiz = openQuiz(getQuiz(quizId));
   const rows = store.all<RawQuestion>('SELECT * FROM questions WHERE quiz_id=? ORDER BY position', [quizId]);
-  const questions = rows.map((r) => {
+  const questions = rows.map((raw) => {
+    const r = openQuestion(raw);
     const q: {
       id: number; position: number; type: QuestionType; prompt: string; explanation: string;
       points: number; choices?: Choice[]; answer?: QuestionAnswer;
@@ -256,11 +320,16 @@ export function quizList({ deck, limit }: QuizListInput): QuizSummary[] {
     (SELECT COUNT(*) FROM questions qs WHERE qs.quiz_id = qz.id) AS question_count,
     (SELECT COALESCE(SUM(qs.points), 0) FROM questions qs WHERE qs.quiz_id = qz.id) AS total_points
     FROM quizzes qz`;
+  const decrypt = (rows: QuizSummary[]): QuizSummary[] => rows.map((r) => ({
+    ...r,
+    title: vault.open('quizzes', 'title', r.title)!,
+    description: vault.open('quizzes', 'description', r.description)!,
+  }));
   if (deck !== undefined) {
     const d = resolveDeck(deck);
-    return store.all<QuizSummary>(base + ' WHERE qz.deck_id=? ORDER BY qz.id LIMIT ?', [d.id, lim]);
+    return decrypt(store.all<QuizSummary>(base + ' WHERE qz.deck_id=? ORDER BY qz.id LIMIT ?', [d.id, lim]));
   }
-  return store.all<QuizSummary>(base + ' ORDER BY qz.id LIMIT ?', [lim]);
+  return decrypt(store.all<QuizSummary>(base + ' ORDER BY qz.id LIMIT ?', [lim]));
 }
 
 export function quizUpdate({ quizId, title, description, deck, source, shuffle }: QuizUpdateInput): {
@@ -276,18 +345,20 @@ export function quizUpdate({ quizId, title, description, deck, source, shuffle }
   const deckId = deck !== undefined ? resolveDeck(deck).id : quiz.deck_id;
   if (deckId !== null && store.get('SELECT id FROM quizzes WHERE deck_id=? AND id<>?', [deckId, quizId]))
     throw new AppError('CONFLICT', 'deck already has a quiz', 'deck');
-  const newTitle = title !== undefined ? title : quiz.title;
-  const newDescription = description !== undefined ? description : quiz.description;
+  const newTitle = title !== undefined ? title : vault.open('quizzes', 'title', quiz.title)!;
+  const newDescription = description !== undefined ? description : vault.open('quizzes', 'description', quiz.description)!;
   const newSource = source !== undefined ? source : quiz.source;
   const newShuffle = shuffle === undefined ? quiz.shuffle : (shuffle ? 1 : 0);
   store.run('UPDATE quizzes SET title=?, description=?, deck_id=?, source=?, shuffle=? WHERE id=?',
-    [newTitle, newDescription, deckId, newSource, newShuffle, quizId]);
+    [vault.seal('quizzes', 'title', newTitle), vault.seal('quizzes', 'description', newDescription),
+      deckId, newSource, newShuffle, quizId]);
   return { ok: true, quiz: { id: quiz.id, title: newTitle, description: newDescription, deck_id: deckId, source: newSource, shuffle: newShuffle } };
 }
 
 export function quizDelete({ quizId, confirmTitle, deleteDeck = false }: QuizDeleteBoxInput): OkResponse {
   const quiz = getQuiz(quizId);
-  if (confirmTitle !== quiz.title) throw new AppError('VALIDATION', 'confirm_title mismatch', 'confirm_title');
+  if (confirmTitle !== vault.open('quizzes', 'title', quiz.title))
+    throw new AppError('VALIDATION', 'confirm_title mismatch', 'confirm_title');
   store.tx(() => {
     store.run('DELETE FROM quizzes WHERE id=?', [quizId]);
     if (deleteDeck && quiz.deck_id !== null) store.run('DELETE FROM decks WHERE id=?', [quiz.deck_id]);
@@ -302,7 +373,7 @@ export function quizOutline({ quizId }: QuizOutlineInput): {
   const quiz = getQuiz(quizId);
   const questions = store.all<{ id: number; position: number; type: QuestionType }>(
     'SELECT id, position, type FROM questions WHERE quiz_id=? ORDER BY position', [quizId]);
-  return { quiz: { id: quiz.id, title: quiz.title, question_count: questions.length }, questions };
+  return { quiz: { id: quiz.id, title: vault.open('quizzes', 'title', quiz.title)!, question_count: questions.length }, questions };
 }
 
 export function questionUpdate({ questions }: QuestionUpdateInput): { ok: true; question_ids: number[] } {
@@ -312,7 +383,7 @@ export function questionUpdate({ questions }: QuestionUpdateInput): { ok: true; 
   const updates = questions.map((p: QuestionQuestionPatch, i: number) => {
     if (!p || p.questionId === undefined)
       throw new AppError('VALIDATION', 'question_id required', `questions[${i}].question_id`);
-    const row = getQuestion(p.questionId);
+    const row = openQuestion(getQuestion(p.questionId));
     const oldAnswer = JSON.parse(row.answer_json) as QuestionAnswer;
     const oldChoices = row.choices_json ? JSON.parse(row.choices_json) as Choice[] : null;
 
@@ -352,8 +423,10 @@ export function questionUpdate({ questions }: QuestionUpdateInput): { ok: true; 
   store.tx(() => {
     for (const q of updates) {
       store.run('UPDATE questions SET position=?, type=?, prompt=?, choices_json=?, answer_json=?, explanation=?, points=? WHERE id=?',
-        [q.position, q.type, q.prompt, q.choices ? JSON.stringify(q.choices) : null,
-          JSON.stringify(q.answer), q.explanation, q.points, q.id]);
+        [q.position, q.type, vault.seal('questions', 'prompt', q.prompt),
+          q.choices ? vault.seal('questions', 'choices_json', JSON.stringify(q.choices)) : null,
+          vault.seal('questions', 'answer_json', JSON.stringify(q.answer)),
+          vault.seal('questions', 'explanation', q.explanation), q.points, q.id]);
     }
   });
   return { ok: true, question_ids: updates.map((q) => q.id) };
@@ -474,7 +547,7 @@ export function importBundle(data: Bundle): {
     if (typeof deck === 'string' && bundleNames.has(deck.toLowerCase())) continue;
     const existing = typeof deck === 'number'
       ? store.get<{ id: number }>('SELECT id FROM decks WHERE id=?', [deck])
-      : store.get<{ id: number }>('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [deck]);
+      : store.get<{ id: number }>('SELECT id FROM decks WHERE name_key=?', [vault.indexValue(deck.toLowerCase())]);
     if (!existing) throw new AppError('NOT_FOUND', 'deck not found', `quizzes[${i}].deck`);
     if (store.get('SELECT id FROM quizzes WHERE deck_id=?', [existing]))
       throw new AppError('CONFLICT', 'deck already has a quiz', `quizzes[${i}].deck`);
@@ -489,20 +562,22 @@ export function importBundle(data: Bundle): {
     const deckIds = new Map<string, number>();
     for (const d of preparedDecks) {
       const key = d.name.toLowerCase();
-      const existing = store.get<DeckRow>('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [d.name]);
+      const existing = store.get<DeckRow>('SELECT id FROM decks WHERE name_key=?', [vault.indexValue(key)]);
       let deckId: number;
       if (existing) {
         deckId = existing.id;
         counts.decks_reused++;
       } else {
-        const r = store.run('INSERT INTO decks (name, description) VALUES (?,?)', [d.name, d.description]);
+        const r = store.run('INSERT INTO decks (name, description, name_key) VALUES (?,?,?)',
+          [vault.seal('decks', 'name', d.name), vault.seal('decks', 'description', d.description), vault.indexValue(key)]);
         deckId = r.lastInsertRowid;
         counts.decks_created++;
       }
       deckIds.set(key, deckId);
       for (const c of d.cards) {
         store.run('INSERT INTO cards (deck_id, front, back, tags_json, source) VALUES (?,?,?,?,?)',
-          [deckId, c.front, c.back, JSON.stringify(c.tags), 'import']);
+          [deckId, vault.seal('cards', 'front', c.front), vault.seal('cards', 'back', c.back),
+            vault.seal('cards', 'tags_json', JSON.stringify(c.tags)), 'import']);
         counts.cards_added++;
       }
     }
@@ -513,21 +588,23 @@ export function importBundle(data: Bundle): {
         if (typeof q.deck === 'string') {
           const key = q.deck.toLowerCase();
           const found = deckIds.get(key)
-            ?? store.get<DeckRow>('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [q.deck]);
+            ?? store.get<DeckRow>('SELECT id FROM decks WHERE name_key=?', [vault.indexValue(key)]);
           deckId = typeof found === 'number' ? found : (found ? found.id : null);
         } else {
           deckId = Number(q.deck);
         }
       }
       const r = store.run('INSERT INTO quizzes (title, description, deck_id, source, shuffle) VALUES (?,?,?,?,?)',
-        [q.title, q.description, deckId, 'import', q.shuffle ? 1 : 0]);
+        [vault.seal('quizzes', 'title', q.title), vault.seal('quizzes', 'description', q.description),
+          deckId, 'import', q.shuffle ? 1 : 0]);
       const quizId = r.lastInsertRowid;
       counts.quizzes_created++;
       q.questions.forEach((question, i) => {
         store.run('INSERT INTO questions (quiz_id, position, type, prompt, choices_json, answer_json, explanation, points) VALUES (?,?,?,?,?,?,?,?)',
-          [quizId, i + 1, question.type, question.prompt,
-            question.choices ? JSON.stringify(question.choices) : null,
-            JSON.stringify(question.answer), question.explanation, question.points]);
+          [quizId, i + 1, question.type, vault.seal('questions', 'prompt', question.prompt),
+            question.choices ? vault.seal('questions', 'choices_json', JSON.stringify(question.choices)) : null,
+            vault.seal('questions', 'answer_json', JSON.stringify(question.answer)),
+            vault.seal('questions', 'explanation', question.explanation), question.points]);
         counts.questions_added++;
       });
     }

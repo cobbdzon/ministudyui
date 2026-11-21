@@ -1,14 +1,23 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Database } from 'bun:sqlite';
 import { app } from '../src/http/app.js';
 import * as store from '../src/boxes/store/index.js';
+import * as auth from '../src/boxes/auth/index.js';
+import * as scope from '../src/boxes/scope/index.js';
+import * as session from '../src/http/session.js';
 
 const HOST = { host: '127.0.0.1:3000' };
+let COOKIE = '';
+let tmp = '';
+let db: Database;
 
 async function call(
   path: string,
   opts: { method?: string; body?: unknown; headers?: Record<string, string>; raw?: string } = {},
 ) {
-  const headers: Record<string, string> = { ...HOST, ...(opts.headers ?? {}) };
+  const headers: Record<string, string> = { ...HOST, ...(COOKIE ? { cookie: COOKIE } : {}), ...(opts.headers ?? {}) };
   let body: string | undefined = opts.raw;
   if (opts.body !== undefined) {
     headers['content-type'] = 'application/json';
@@ -19,12 +28,27 @@ async function call(
   return { res, json };
 }
 
-beforeAll(() => { process.env.PORT = '3000'; });
-afterAll(() => store.close());
+beforeAll(async () => {
+  process.env.PORT = '3000';
+  tmp = mkdtempSync('/tmp/opencode/ms-http-');
+  process.env.DATA_DIR = tmp;
+  auth.open(join(tmp, 'auth.db'));
+  auth.migrate();
+  if (!auth.hasUsers()) {
+    await auth.createUser({ username: 'tester', passphrase: 'test passphrase long', admin: true, kdfCost: { N: 16, r: 8, p: 1 } });
+  }
+});
+afterAll(() => {
+  auth.close(); store.close(); session.clear();
+  rmSync(tmp, { recursive: true, force: true });
+});
 beforeEach(() => {
-  store.close();
-  store.open(':memory:');
+  session.clear();
+  db = store.open(':memory:');
   store.migrate();
+  COOKIE = `ms_session=${session.create({
+    userId: 1, username: 'tester', isAdmin: true, keys: scope.devKeys(), db,
+  })}`;
 });
 
 describe('security and error envelope', () => {
@@ -262,7 +286,7 @@ describe('attempts, grading and stats', () => {
   });
 
   it('exposes an SSE event stream', async () => {
-    const res = await app.request('/api/events', { headers: HOST });
+    const res = await app.request('/api/events', { headers: { ...HOST, cookie: COOKIE } });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     await res.body?.cancel();

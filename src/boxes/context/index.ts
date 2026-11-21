@@ -1,4 +1,5 @@
 import * as store from '../store/index.js';
+import * as vault from '../vault/index.js';
 import type {
   CardRow, Choice, CurrentContextResult, DeckRow, GradingStatus,
   QuestionAnswer, QuestionType, QuizRow, UiContext, UiContextInput,
@@ -66,8 +67,9 @@ export function current(): CurrentContextResult {
     : null;
   const card = cardRow
     ? {
-        id: cardRow.id, deck_id: cardRow.deck_id, front: cardRow.front, back: cardRow.back,
-        tags: parse<string[]>(cardRow.tags_json, []), source: cardRow.source,
+        id: cardRow.id, deck_id: cardRow.deck_id,
+        front: vault.open('cards', 'front', cardRow.front)!, back: vault.open('cards', 'back', cardRow.back)!,
+        tags: parse<string[]>(vault.open('cards', 'tags_json', cardRow.tags_json), []), source: cardRow.source,
       }
     : null;
 
@@ -77,10 +79,10 @@ export function current(): CurrentContextResult {
   const question = questionRow
     ? {
         id: questionRow.id, quiz_id: questionRow.quiz_id, position: questionRow.position,
-        type: questionRow.type, prompt: questionRow.prompt,
-        choices: parse<Choice[] | null>(questionRow.choices_json, null),
-        answer: parse<QuestionAnswer | null>(questionRow.answer_json, null),
-        explanation: questionRow.explanation, points: questionRow.points,
+        type: questionRow.type, prompt: vault.open('questions', 'prompt', questionRow.prompt)!,
+        choices: parse<Choice[] | null>(vault.open('questions', 'choices_json', questionRow.choices_json), null),
+        answer: parse<QuestionAnswer | null>(vault.open('questions', 'answer_json', questionRow.answer_json), null),
+        explanation: vault.open('questions', 'explanation', questionRow.explanation)!, points: questionRow.points,
       }
     : null;
 
@@ -101,8 +103,12 @@ export function current(): CurrentContextResult {
     context,
     card,
     question,
-    deck: deck ? { id: deck.id, name: deck.name } : null,
-    quiz: quiz ? { id: quiz.id, title: quiz.title } : null,
-    your_answer: yourAnswer,
+    deck: deck ? { id: deck.id, name: vault.open('decks', 'name', deck.name)! } : null,
+    quiz: quiz ? { id: quiz.id, title: vault.open('quizzes', 'title', quiz.title)! } : null,
+    your_answer: yourAnswer ? {
+      ...yourAnswer,
+      response: vault.open('answers', 'response', yourAnswer.response)!,
+      feedback: vault.open('answers', 'feedback', yourAnswer.feedback)!,
+    } : null,
   };
 }

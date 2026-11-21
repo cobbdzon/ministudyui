@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as scope from '../scope/index.js';
+import { AppError } from '../errors.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -92,15 +93,28 @@ export function migrate(): void {
   migrateDb(defaultDb ?? scope.current().db);
 }
 
+function assertDbSize(db: Database): void {
+  const maxMb = Number(process.env.MAX_USER_DB_MB || 512);
+  if (!Number.isFinite(maxMb) || maxMb <= 0) return;
+  const pages = (db.prepare('PRAGMA page_count').get() as { page_count: number }).page_count;
+  const size = (db.prepare('PRAGMA page_size').get() as { page_size: number }).page_size;
+  if (pages * size > maxMb * 1024 * 1024) {
+    throw new AppError('CONFLICT', `User database exceeded ${maxMb} MB limit`);
+  }
+}
+
 export function tx<T>(fn: () => T): T {
   const db = scope.current().db;
+  assertDbSize(db);
   db.exec('BEGIN IMMEDIATE');
   try { const r = fn(); db.exec('COMMIT'); return r; }
   catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
 export function run(sql: string, params: SQLQueryBindings[] = []): RunResult {
-  const r: Changes = scope.current().db.prepare(sql).run(...params);
+  const db = scope.current().db;
+  assertDbSize(db);
+  const r: Changes = db.prepare(sql).run(...params);
   return { changes: r.changes, lastInsertRowid: Number(r.lastInsertRowid ?? 0) };
 }
 export function get<T>(sql: string, params: SQLQueryBindings[] = []): T | null {

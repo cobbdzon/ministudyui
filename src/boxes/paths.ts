@@ -1,6 +1,6 @@
 // All filesystem locations derive from DATA_DIR. No env file is loaded; these
 // are real environment variables. The default resolves from the source file so
-// it is independent of cwd, matching the old DB_PATH default behaviour.
+// it is independent of cwd.
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

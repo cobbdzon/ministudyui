@@ -6,6 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { userDbPath } from '../paths.js';
 import * as store from '../store/index.js';
+import { AppError } from '../errors.js';
 
 interface Entry {
   db: Database;
@@ -50,6 +51,11 @@ export function open(userId: number): Database {
   db.exec('PRAGMA foreign_keys=ON');
   db.exec('PRAGMA busy_timeout=5000');
   db.exec('PRAGMA synchronous=NORMAL');
+  const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+  if (version > 0 && version < 6) {
+    db.close();
+    throw new AppError('CONFLICT', 'Legacy user database found; run migrate:legacy instead');
+  }
   store.migrateDb(db);
   entries.set(userId, { db, leases: 1, lastUsed: Date.now() });
   return db;

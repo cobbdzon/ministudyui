@@ -2,16 +2,19 @@
 -- Per-connection pragmas live in store/index.js.
 CREATE TABLE decks (
   id          INTEGER PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE COLLATE NOCASE CHECK (length(name) BETWEEN 1 AND 120),
-  description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 2000),
+  -- name/description are encrypted at rest; uniqueness is enforced by the
+  -- blind index `name_key`, not by SQL NOCASE on the ciphertext.
+  name        TEXT NOT NULL,
+  name_key    TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE cards (
   id         INTEGER PRIMARY KEY,
   deck_id    INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
-  front      TEXT NOT NULL CHECK (length(front) BETWEEN 1 AND 4000),
-  back       TEXT NOT NULL CHECK (length(back)  BETWEEN 1 AND 4000),
-  tags_json  TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array'),
+  front      TEXT NOT NULL,
+  back       TEXT NOT NULL,
+  tags_json  TEXT NOT NULL DEFAULT '[]',
   source     TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','ai','import')),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -43,8 +46,8 @@ CREATE INDEX idx_reviews_card ON reviews(card_id, reviewed_at);
 CREATE TABLE quizzes (
   id          INTEGER PRIMARY KEY,
   deck_id     INTEGER REFERENCES decks(id) ON DELETE SET NULL,
-  title       TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
-  description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 2000),
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   source      TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','ai','import')),
   shuffle     INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0,1)),
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -54,10 +57,10 @@ CREATE TABLE questions (
   quiz_id      INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
   position     INTEGER NOT NULL CHECK (position >= 1),
   type         TEXT NOT NULL CHECK (type IN ('mcq','multi','numeric','short','latex')),
-  prompt       TEXT NOT NULL CHECK (length(prompt) BETWEEN 1 AND 4000),
-  choices_json TEXT CHECK (choices_json IS NULL OR json_valid(choices_json)),
-  answer_json  TEXT NOT NULL CHECK (json_valid(answer_json)),
-  explanation  TEXT NOT NULL DEFAULT '' CHECK (length(explanation) <= 4000),
+  prompt       TEXT NOT NULL,
+  choices_json TEXT,
+  answer_json  TEXT NOT NULL,
+  explanation  TEXT NOT NULL DEFAULT '',
   points       REAL NOT NULL DEFAULT 1 CHECK (points > 0 AND points <= 100),
   UNIQUE (quiz_id, position)
 );
@@ -77,11 +80,11 @@ CREATE TABLE answers (
   id             INTEGER PRIMARY KEY,
   attempt_id     INTEGER NOT NULL REFERENCES attempts(id)  ON DELETE CASCADE,
   question_id    INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-  response       TEXT NOT NULL CHECK (length(response) <= 8000),
+  response       TEXT NOT NULL,
   grading_status TEXT NOT NULL DEFAULT 'pending' CHECK (grading_status IN ('pending','graded')),
   is_correct     INTEGER CHECK (is_correct IN (0,1)),
   points_awarded REAL,
-  feedback       TEXT NOT NULL DEFAULT '' CHECK (length(feedback) <= 4000),
+  feedback       TEXT NOT NULL DEFAULT '',
   graded_by      TEXT CHECK (graded_by IN ('auto','ai','manual')),
   graded_at      TEXT,
   UNIQUE (attempt_id, question_id)

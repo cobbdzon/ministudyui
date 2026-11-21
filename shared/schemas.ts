@@ -194,3 +194,29 @@ export type AttemptGetQuery = z.infer<typeof AttemptGetQuerySchema>;
 export type AttemptListQuery = z.infer<typeof AttemptListQuerySchema>;
 export type PendingQuery = z.infer<typeof PendingQuerySchema>;
 export type StatsQuery = z.infer<typeof StatsQuerySchema>;
+
+// ---- Auth / admin / agent tokens ---------------------------------------------
+export const UsernameSchema = z.string().regex(/^[A-Za-z0-9._-]{3,32}$/);
+export const PassphraseSchema = z.string().min(10).max(1024);
+export const SetupSchema = z.object({ username: UsernameSchema, passphrase: PassphraseSchema });
+export const LoginSchema = z.object({ username: UsernameSchema, passphrase: z.string().min(1).max(1024) });
+export const RecoverSchema = z.object({ recovery_key: z.string().min(1), passphrase: PassphraseSchema });
+export const RegisterSchema = z.object({
+  invite_code: z.string().min(1), username: UsernameSchema, passphrase: PassphraseSchema,
+});
+export const ChangePassphraseSchema = z.object({
+  current_passphrase: z.string().min(1).max(1024), new_passphrase: PassphraseSchema,
+});
+export const CreateInviteSchema = z.object({ ttl_seconds: z.number().int().min(60).max(2592000).optional() });
+export const SetDisabledSchema = z.object({ disabled: z.boolean() });
+export const AgentTokenCreateSchema = z.object({
+  label: z.string().min(1).max(120), read_only: z.boolean().optional(),
+});
+export type SetupInput = z.infer<typeof SetupSchema>;
+export type LoginInput = z.infer<typeof LoginSchema>;
+export type RecoverInput = z.infer<typeof RecoverSchema>;
+export type RegisterInput = z.infer<typeof RegisterSchema>;
+export type ChangePassphraseInput = z.infer<typeof ChangePassphraseSchema>;
+export type CreateInviteInput = z.infer<typeof CreateInviteSchema>;
+export type SetDisabledInput = z.infer<typeof SetDisabledSchema>;
+export type AgentTokenCreateInput = z.infer<typeof AgentTokenCreateSchema>;

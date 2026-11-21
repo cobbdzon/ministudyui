@@ -1,30 +1,61 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Database } from 'bun:sqlite';
 import { app } from '../src/http/app.js';
 import * as store from '../src/boxes/store/index.js';
 import * as context from '../src/boxes/context/index.js';
+import * as vault from '../src/boxes/vault/index.js';
+import * as auth from '../src/boxes/auth/index.js';
+import * as scope from '../src/boxes/scope/index.js';
+import * as session from '../src/http/session.js';
 
 const HOST = { host: '127.0.0.1:3000' };
+let COOKIE = '';
+let tmp = '';
+let db: Database;
+const S = (t: string, c: string, v: string) => vault.seal(t, c, v)!;
 
 function seed(): void {
-  store.run("INSERT INTO decks (id, name) VALUES (1, 'Linear Algebra')");
-  store.run("INSERT INTO cards (id, deck_id, front, back, tags_json) VALUES (1, 1, 'What is $V$?', 'A vector space', '[\"basics\"]')");
-  store.run("INSERT INTO quizzes (id, deck_id, title) VALUES (1, 1, 'Quiz 1')");
+  store.run('INSERT INTO decks (id, name, name_key) VALUES (1, ?, ?)',
+    [S('decks', 'name', 'Linear Algebra'), vault.indexValue('linear algebra')]);
+  store.run('INSERT INTO cards (id, deck_id, front, back, tags_json) VALUES (1, 1, ?, ?, ?)',
+    [S('cards', 'front', 'What is $V$?'), S('cards', 'back', 'A vector space'), S('cards', 'tags_json', '["basics"]')]);
+  store.run('INSERT INTO quizzes (id, deck_id, title) VALUES (1, 1, ?)', [S('quizzes', 'title', 'Quiz 1')]);
   store.run(`INSERT INTO questions (id, quiz_id, position, type, prompt, choices_json, answer_json, explanation, points)
-    VALUES (1, 1, 1, 'mcq', 'Pick one', ?, ?, 'Because it is true', 2)`, [
-    JSON.stringify([{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }]),
-    JSON.stringify({ correct: 'b' }),
+    VALUES (1, 1, 1, 'mcq', ?, ?, ?, ?, 2)`, [
+    S('questions', 'prompt', 'Pick one'),
+    S('questions', 'choices_json', JSON.stringify([{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }])),
+    S('questions', 'answer_json', JSON.stringify({ correct: 'b' })),
+    S('questions', 'explanation', 'Because it is true'),
   ]);
   store.run('INSERT INTO attempts (id, quiz_id) VALUES (1, 1)');
-  store.run("INSERT INTO answers (attempt_id, question_id, response) VALUES (1, 1, 'b')");
+  store.run('INSERT INTO answers (attempt_id, question_id, response, feedback) VALUES (1, 1, ?, ?)',
+    [S('answers', 'response', 'b'), S('answers', 'feedback', '')]);
 }
 
-beforeAll(() => { process.env.PORT = '3000'; });
-afterAll(() => store.close());
+beforeAll(async () => {
+  process.env.PORT = '3000';
+  tmp = mkdtempSync('/tmp/opencode/ms-context-');
+  process.env.DATA_DIR = tmp;
+  auth.open(join(tmp, 'auth.db'));
+  auth.migrate();
+  if (!auth.hasUsers()) {
+    await auth.createUser({ username: 'tester', passphrase: 'test passphrase long', admin: true, kdfCost: { N: 16, r: 8, p: 1 } });
+  }
+});
+afterAll(() => {
+  auth.close(); store.close(); session.clear();
+  rmSync(tmp, { recursive: true, force: true });
+});
 beforeEach(() => {
-  store.close();
-  store.open(':memory:');
+  session.clear();
+  db = store.open(':memory:');
   store.migrate();
   seed();
+  COOKIE = `ms_session=${session.create({
+    userId: 1, username: 'tester', isAdmin: true, keys: scope.devKeys(), db,
+  })}`;
 });
 
 describe('current UI context', () => {
@@ -77,19 +108,19 @@ describe('current UI context', () => {
 describe('ui context HTTP endpoints', () => {
   it('round-trips the reported context', async () => {
     const put = await app.request('/api/ui/context', {
-      method: 'PUT', headers: { ...HOST, 'content-type': 'application/json' },
+      method: 'PUT', headers: { ...HOST, cookie: COOKIE, 'content-type': 'application/json' },
       body: JSON.stringify({ view: 'review', deck_id: 1, card_id: 1, flipped: false }),
     });
     expect(put.status).toBe(200);
     expect((await put.json() as { context: { card_id: number } }).context.card_id).toBe(1);
 
-    const get = await app.request('/api/ui/context', { headers: HOST });
+    const get = await app.request('/api/ui/context', { headers: { ...HOST, cookie: COOKIE } });
     expect((await get.json() as { context: { view: string } }).context.view).toBe('review');
   });
 
   it('rejects an unknown view', async () => {
     const res = await app.request('/api/ui/context', {
-      method: 'PUT', headers: { ...HOST, 'content-type': 'application/json' },
+      method: 'PUT', headers: { ...HOST, cookie: COOKIE, 'content-type': 'application/json' },
       body: JSON.stringify({ view: 'unknown' }),
     });
     expect(res.status).toBe(400);

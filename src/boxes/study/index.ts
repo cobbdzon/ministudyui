@@ -1,5 +1,6 @@
 import * as store from '../store/index.js';
 import * as srs from '../srs/index.js';
+import * as vault from '../vault/index.js';
 import { AppError } from '../errors.js';
 import type {
   CardRow, CardScheduleBoxInput, CardStateRow, DeckRow, DeckSummary, OkResponse,
@@ -10,7 +11,7 @@ export function queue({ deck, limit }: ReviewQueueInput): ReviewCardDto[] {
   let deckId: number;
   if (typeof deck === 'number') deckId = deck;
   else {
-    const d = store.get<DeckRow>('SELECT * FROM decks WHERE name=? COLLATE NOCASE', [deck ?? '']);
+    const d = store.get<DeckRow>('SELECT * FROM decks WHERE name_key=?', [vault.indexValue((deck ?? '').toLowerCase())]);
     if (!d) throw new AppError('NOT_FOUND', 'deck not found');
     deckId = d.id;
   }
@@ -27,7 +28,10 @@ export function queue({ deck, limit }: ReviewQueueInput): ReviewCardDto[] {
      ORDER BY cs.due_at LIMIT ?`, [deckId, lim]);
   const now = new Date().toISOString();
   return rows.map((r) => ({
-    id: r.id, front: r.front, back: r.back, tags: JSON.parse(r.tags_json) as string[], source: r.source,
+    id: r.id,
+    front: vault.open('cards', 'front', r.front)!,
+    back: vault.open('cards', 'back', r.back)!,
+    tags: JSON.parse(vault.open('cards', 'tags_json', r.tags_json)!) as string[], source: r.source,
     preview: srs.preview({
       ease: r.ease, interval_days: r.interval_days, reps: r.reps, lapses: r.lapses,
     }, now),
@@ -105,7 +109,7 @@ export function stats({ deck, days }: StatsInput): StatsDto {
   if (deck !== undefined) {
     const row = typeof deck === 'number'
       ? store.get<{ id: number }>('SELECT id FROM decks WHERE id=?', [deck])
-      : store.get<{ id: number }>('SELECT id FROM decks WHERE name=? COLLATE NOCASE', [deck]);
+      : store.get<{ id: number }>('SELECT id FROM decks WHERE name_key=?', [vault.indexValue(deck.toLowerCase())]);
     if (!row) throw new AppError('NOT_FOUND', 'deck not found');
     deckId = row.id;
   }
@@ -147,31 +151,46 @@ export function stats({ deck, days }: StatsInput): StatsDto {
   ];
 
   // ---- weakest tags: summed lapses across tags, top 6 with at least one lapse ----
-  const weakest_tags = store.all<{ tag: string; cards: number; lapses: number }>(
-    `SELECT je.value AS tag, COUNT(*) AS cards, SUM(cs.lapses) AS lapses
-     FROM cards c
-     JOIN card_state cs ON cs.card_id = c.id
-     JOIN json_each(c.tags_json) je
-     WHERE (? IS NULL OR c.deck_id = ?)
-     GROUP BY je.value
-     HAVING SUM(cs.lapses) > 0
-     ORDER BY SUM(cs.lapses) DESC, COUNT(*) DESC
-     LIMIT 6`,
-    [deckParam, deckParam],
-  ).map((r) => ({ tag: String(r.tag), cards: Number(r.cards), lapses: Number(r.lapses) }));
+  // tags_json is encrypted, so expand/decompose it here instead of SQL json_each.
+  const tagRows = store.all<{ tags_json: string; lapses: number }>(
+    `SELECT c.tags_json, cs.lapses
+     FROM cards c JOIN card_state cs ON cs.card_id = c.id
+     WHERE (? IS NULL OR c.deck_id = ?)`, [deckParam, deckParam]);
+  const tagTotals = new Map<string, { cards: number; lapses: number }>();
+  for (const r of tagRows) {
+    const tags = JSON.parse(vault.open('cards', 'tags_json', r.tags_json)!) as string[];
+    for (const tag of tags) {
+      const t = tagTotals.get(tag) ?? { cards: 0, lapses: 0 };
+      t.cards += 1;
+      t.lapses += r.lapses;
+      tagTotals.set(tag, t);
+    }
+  }
+  const weakest_tags = [...tagTotals.entries()]
+    .filter(([, v]) => v.lapses > 0)
+    .map(([tag, v]) => ({ tag, cards: v.cards, lapses: v.lapses }))
+    .sort((a, b) => (b.lapses - a.lapses) || (b.cards - a.cards))
+    .slice(0, 6);
 
   return { total, due, reviews_per_day: rpd, retention, interval_distribution, weakest_tags };
 }
 
 export function deckSummaries(): DeckSummary[] {
-  const decks = store.all<DeckRow>('SELECT * FROM decks ORDER BY name');
+  const decks = store.all<DeckRow>('SELECT * FROM decks');
   return decks.map((d) => ({
-    id: d.id, name: d.name, description: d.description,
+    id: d.id,
+    name: vault.open('decks', 'name', d.name)!,
+    description: vault.open('decks', 'description', d.description)!,
     due: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.ignored = 0 AND cs.due_at <= strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\')', [d.id]),
     new: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps = 0', [d.id]),
     total: store.count('SELECT COUNT(*) AS n FROM cards WHERE deck_id=?', [d.id]),
     mature: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.reps >= 3', [d.id]),
     ignored: store.count('SELECT COUNT(*) AS n FROM cards c JOIN card_state cs ON cs.card_id=c.id WHERE c.deck_id=? AND cs.ignored = 1', [d.id]),
     quizzes: store.count('SELECT COUNT(*) AS n FROM quizzes WHERE deck_id=?', [d.id]),
-  }));
+  })).sort((a, b) => {
+    // decks.name is ciphertext; preserve the old NOCASE ordering on the plaintext.
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  });
 }

@@ -100,13 +100,12 @@ describe('scope', () => {
 });
 
 describe('paths + userdb registry', () => {
-  test('DATA_DIR drives all paths and never uses DB_PATH', () => {
+  test('DATA_DIR drives all filesystem paths', () => {
     expect(dataDir()).toBe(tmp);
     expect(authDbPath()).toBe(join(tmp, 'auth.db'));
     expect(userDbPath(42)).toBe(join(tmp, 'users', '42.db'));
     ensureDataDir();
     expect(existsSync(join(tmp, 'users'))).toBe(true);
-    expect(process.env.DB_PATH).toBeUndefined();
   });
 
   test('opens one migrated DB per user with standard pragmas', () => {
@@ -114,7 +113,7 @@ describe('paths + userdb registry', () => {
     const dbB = userdb.open(2);
     expect(dbA).not.toBe(dbB);
     for (const db of [dbA, dbB]) {
-      expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(5);
+      expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(6);
       expect((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
       expect(existsSync(userDbPath(1)) || existsSync(userDbPath(2))).toBe(true);
     }

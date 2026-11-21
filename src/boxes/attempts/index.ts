@@ -1,12 +1,33 @@
 import * as store from '../store/index.js';
+import * as vault from '../vault/index.js';
 import { AppError } from '../errors.js';
 import { gradeAuto } from '../grader/index.js';
 import type {
-  AnswerResponse, AnswerRow, AttemptAnswerInput, AttemptListInput, AttemptQuestionsInput, AttemptRow,
-  AttemptStart, AttemptStartInput, AttemptSubmitInput, Choice, GradeAnswerInput,
-  GradeResponse, PendingAnswerDto, PendingInput, QuestionAnswer, QuestionRow,
-  QuizQuestionDto, QuizRow, SubmitResponse,
+  AnswerResponse, AnswerRow, AttemptAnswerInput, AttemptGetResponse, AttemptListInput,
+  AttemptQuestionsInput, AttemptRow, AttemptStart, AttemptStartInput, AttemptSubmitInput,
+  Choice, GradeAnswerInput, GradeResponse, PendingAnswerDto, PendingInput, QuestionAnswer,
+  QuestionRow, QuizQuestionDto, QuizRow, SubmitResponse,
 } from '../../../shared/types.js';
+
+/** Decrypt the text fields of a question row before grading or rendering. */
+function decryptQuestion(q: QuestionRow): QuestionRow {
+  return {
+    ...q,
+    prompt: vault.open('questions', 'prompt', q.prompt)!,
+    choices_json: vault.open('questions', 'choices_json', q.choices_json),
+    answer_json: vault.open('questions', 'answer_json', q.answer_json)!,
+    explanation: vault.open('questions', 'explanation', q.explanation)!,
+  };
+}
+
+/** Decrypt the text fields of an answer row before rendering. */
+function decryptAnswer(a: AnswerRow): AnswerRow {
+  return {
+    ...a,
+    response: vault.open('answers', 'response', a.response)!,
+    feedback: vault.open('answers', 'feedback', a.feedback)!,
+  };
+}
 
 function shuffled<T>(items: T[]): T[] {
   const out = [...items];
@@ -41,14 +62,24 @@ export function attemptQuestions({ attemptId, includeAnswers = true }: AttemptQu
     rows.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
   }
   return rows.map((r) => {
+    const dq = decryptQuestion(r);
     const q: QuizQuestionDto = {
-      id: r.id, position: r.position, type: r.type, prompt: r.prompt,
-      explanation: r.explanation, points: r.points,
+      id: dq.id, position: dq.position, type: dq.type, prompt: dq.prompt,
+      explanation: dq.explanation, points: dq.points,
     };
-    if (r.choices_json) q.choices = JSON.parse(r.choices_json) as Choice[];
-    if (includeAnswers) q.answer = JSON.parse(r.answer_json) as QuestionAnswer;
+    if (dq.choices_json) q.choices = JSON.parse(dq.choices_json) as Choice[];
+    if (includeAnswers) q.answer = JSON.parse(dq.answer_json) as QuestionAnswer;
     return q;
   });
+}
+
+/** Attempt detail formerly assembled with raw SQL in the HTTP handler. */
+export function get({ attemptId, includeAnswers = true }: AttemptQuestionsInput): AttemptGetResponse {
+  const attempt = store.get<AttemptRow>('SELECT * FROM attempts WHERE id=?', [attemptId]);
+  if (!attempt) throw new AppError('NOT_FOUND', 'attempt not found');
+  const answers = store.all<AnswerRow>('SELECT * FROM answers WHERE attempt_id=?', [attemptId]).map(decryptAnswer);
+  const questions = attemptQuestions({ attemptId, includeAnswers });
+  return { attempt, answers, questions };
 }
 
 export function restart({ quizId }: AttemptStartInput): AttemptStart {
@@ -66,17 +97,22 @@ export function answer({ attemptId, questionId, response }: AttemptAnswerInput):
   const att = store.get<AttemptRow>('SELECT * FROM attempts WHERE id=?', [attemptId]);
   if (!att) throw new AppError('NOT_FOUND', 'attempt not found');
   if (att.status !== 'in_progress') throw new AppError('CONFLICT', 'attempt not in progress');
-  const q = store.get<QuestionRow>('SELECT * FROM questions WHERE id=?', [questionId]);
-  if (!q) throw new AppError('NOT_FOUND', 'question not found');
+  const qEnc = store.get<QuestionRow>('SELECT * FROM questions WHERE id=?', [questionId]);
+  if (!qEnc) throw new AppError('NOT_FOUND', 'question not found');
+  const q = decryptQuestion(qEnc);
   const existing = store.get<{ id: number }>('SELECT id FROM answers WHERE attempt_id=? AND question_id=?', [attemptId, questionId]);
   const res = typeof response === 'string' ? response : JSON.stringify(response);
+  const sealedResponse = vault.seal('answers', 'response', res);
   if (existing) {
-    store.run('UPDATE answers SET response=?, grading_status=\'pending\', is_correct=NULL, points_awarded=NULL, feedback=\'\', graded_by=NULL, graded_at=NULL WHERE id=?', [res, existing.id]);
+    // Re-answering resets to pending without re-running the auto-grader.
+    store.run('UPDATE answers SET response=?, grading_status=\'pending\', is_correct=NULL, points_awarded=NULL, feedback=?, graded_by=NULL, graded_at=NULL WHERE id=?',
+      [sealedResponse, vault.seal('answers', 'feedback', ''), existing.id]);
     return { ok: true, answer_id: existing.id };
   }
   const g = gradeAuto(q, res);
   const r = store.run('INSERT INTO answers (attempt_id, question_id, response, grading_status, is_correct, points_awarded, feedback, graded_by, graded_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    [attemptId, questionId, res, g.status, g.is_correct, g.points, g.feedback,
+    [attemptId, questionId, sealedResponse, g.status, g.is_correct, g.points,
+      vault.seal('answers', 'feedback', g.feedback),
       g.status === 'graded' ? 'auto' : null, g.status === 'graded' ? new Date().toISOString() : null]);
   return { ok: true, answer_id: r.lastInsertRowid };
 }
@@ -86,16 +122,17 @@ export function submit({ attemptId }: AttemptSubmitInput): SubmitResponse {
   if (!att) throw new AppError('NOT_FOUND', 'attempt not found');
   const answers = store.all<AnswerRow>('SELECT * FROM answers WHERE attempt_id=?', [attemptId]);
   const questions = store.all<QuestionRow>('SELECT * FROM questions WHERE quiz_id=?', [att.quiz_id]);
-  const qmap = new Map(questions.map((q) => [q.id, q]));
+  const qmap = new Map(questions.map((q) => [q.id, decryptQuestion(q)]));
   let score = 0;
   for (const a of answers) {
     if (a.grading_status === 'pending') {
       const q = qmap.get(a.question_id);
       if (!q) continue;
-      const g = gradeAuto(q, a.response);
+      const response = vault.open('answers', 'response', a.response)!;
+      const g = gradeAuto(q, response);
       if (g.status === 'graded') {
         store.run('UPDATE answers SET grading_status=\'graded\', is_correct=?, points_awarded=?, feedback=?, graded_by=\'auto\', graded_at=? WHERE id=?',
-          [g.is_correct, g.points, g.feedback, new Date().toISOString(), a.id]);
+          [g.is_correct, g.points, vault.seal('answers', 'feedback', g.feedback), new Date().toISOString(), a.id]);
         score += g.points || 0;
       }
     } else {
@@ -116,7 +153,7 @@ export function gradeAnswer({ answerId, points, feedback }: GradeAnswerInput): G
   if (!q) throw new AppError('NOT_FOUND', 'question not found');
   if (points < 0 || points > q.points) throw new AppError('VALIDATION', 'points out of range', 'points');
   store.run('UPDATE answers SET grading_status=\'graded\', is_correct=?, points_awarded=?, feedback=?, graded_by=\'ai\', graded_at=? WHERE id=?',
-    [points >= q.points ? 1 : (points > 0 ? null : 0), points, feedback, new Date().toISOString(), answerId]);
+    [points >= q.points ? 1 : (points > 0 ? null : 0), points, vault.seal('answers', 'feedback', feedback), new Date().toISOString(), answerId]);
   const att = store.get<AttemptRow>('SELECT * FROM attempts WHERE id=?', [a.attempt_id]);
   if (!att) throw new AppError('NOT_FOUND', 'attempt not found');
   const answers = store.all<AnswerRow>('SELECT * FROM answers WHERE attempt_id=?', [a.attempt_id]);
@@ -140,11 +177,12 @@ export function pending({ limit }: PendingInput): PendingAnswerDto[] {
      FROM answers a JOIN questions q ON q.id=a.question_id
      WHERE a.grading_status='pending' ORDER BY a.id LIMIT ?`, [lim]);
   return rows.map((r) => {
-    const ans = JSON.parse(r.answer_json) as QuestionAnswer;
+    const ans = JSON.parse(vault.open('questions', 'answer_json', r.answer_json)!) as QuestionAnswer;
     return {
       answer_id: r.answer_id, attempt_id: r.attempt_id, question_type: r.question_type,
-      prompt: r.prompt, reference: ans.reference || null, rubric: ans.rubric || null,
-      max_points: r.max_points, response: r.response,
+      prompt: vault.open('questions', 'prompt', r.prompt)!,
+      reference: ans.reference || null, rubric: ans.rubric || null,
+      max_points: r.max_points, response: vault.open('answers', 'response', r.response)!,
     };
   });
 }
