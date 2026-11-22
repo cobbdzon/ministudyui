@@ -418,7 +418,7 @@ interface AuthCopy {
   login: { title: string; intro: string; submit: string; toRecover: string; toRegister: string };
   recover: { title: string; intro: string; submit: string; toLogin: string };
   register: { title: string; intro: string; submit: string; toLogin: string; disclosure: string };
-  recovery: { title: string; intro: string; saved: string; continue: string; copy: string };
+  recovery: { title: string; intro: string; saved: string; refreshWarning: string; continue: string; copy: string };
   errors: { mismatch: string; short: string; savedRequired: string; generic: string };
 }
 const copy = (messages as unknown as { auth: AuthCopy }).auth;
@@ -773,6 +773,7 @@ function renderGate(screen: GateScreen): void {
         <code class="auth-secret__value" id="gate-recovery-value">${escapeHtml(pendingRecoveryKey ?? '')}</code>
         ${copyButton(c.copy, 'gate-recovery-value')}
       </div>
+      <p class="auth-note">${escapeHtml(c.refreshWarning)}</p>
       <label class="check-row auth-secret__saved" for="gate-saved">
         <input type="checkbox" id="gate-saved">
         <span>${escapeHtml(c.saved)}</span>
@@ -1498,6 +1499,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('hashchange', () => { if (unlocked) void route(); });
+// A recovery key exists only in memory until the user confirms they saved it.
+// Confirm before a refresh or tab close would discard it.
+window.addEventListener('beforeunload', (event) => {
+  if (!pendingRecoveryKey) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
   if (!localStorage.getItem('ministudy.theme')) applyTheme(preferredTheme());
 });

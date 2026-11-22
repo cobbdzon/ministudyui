@@ -68,6 +68,7 @@
       "title": "Save your recovery key",
       "intro": "This is the only time this key will be shown. Store it somewhere safe: it is the only way back in if you forget your passphrase.",
       "saved": "I saved this recovery key",
+      "refreshWarning": "Refreshing or closing this page will permanently hide the key.",
       "continue": "Continue to my decks",
       "copy": "Copy recovery key"
     },
