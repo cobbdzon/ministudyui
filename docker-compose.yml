@@ -1,0 +1,15 @@
+services:
+  ministudy:
+    build: .
+    image: ministudyui:local
+    container_name: ministudyui
+    restart: unless-stopped
+    init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - ./data:/data
+    stop_grace_period: 15s
