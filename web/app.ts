@@ -426,6 +426,9 @@ const copy = (messages as unknown as { auth: AuthCopy }).auth;
 type GateScreen = 'setup' | 'login' | 'recover' | 'register' | 'recovery';
 let gateEl: HTMLElement | null = null;
 let focusBeforeGate: HTMLElement | null = null;
+let capsOn = false;
+let capsKeyHeld = false;
+let capsAnnounceTimer: number | undefined;
 // One-time values live in JS memory only — never in storage or the URL.
 let pendingRecoveryKey: string | null = null;
 let pendingUser: AuthUser | null = null;
@@ -453,6 +456,7 @@ function openGate(screen: GateScreen): void {
     if (link?.dataset.gateScreen) renderGate(link.dataset.gateScreen as GateScreen);
   });
   gateEl.addEventListener('keydown', (e) => {
+    syncCapsFromEvent(e);
     if (e.key !== 'Tab' || !gateEl) return;
     const focusables = [...gateEl.querySelectorAll<HTMLElement>(
       'input:not([disabled]), button:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -468,16 +472,63 @@ function openGate(screen: GateScreen): void {
       first.focus();
     }
   });
+  gateEl.addEventListener('keyup', syncCapsFromEvent);
+  gateEl.addEventListener('focusin', (e) => {
+    if (e.target instanceof HTMLInputElement) setCapsField(e.target, capsOn);
+  });
+  gateEl.addEventListener('focusout', (e) => {
+    if (e.target instanceof HTMLInputElement) setCapsField(e.target, false, false);
+  });
   document.body.appendChild(gateEl);
   setAppInert(true);
   document.body.classList.add('auth-locked');
   renderGate(screen);
 }
 
+function announceCaps(text: string): void {
+  const region = gateEl?.querySelector<HTMLElement>('.gate__caps-announcer');
+  if (!region) return;
+  window.clearTimeout(capsAnnounceTimer);
+  region.textContent = '';
+  capsAnnounceTimer = window.setTimeout(() => { region.textContent = text; }, 400);
+}
+
+function setCapsField(input: HTMLInputElement, on: boolean, announce = true): void {
+  const hint = document.getElementById(`${input.id}-caps`);
+  if (!hint) return;
+  const wasOn = hint.classList.contains('is-on');
+  hint.classList.toggle('is-on', on);
+  if (on) input.setAttribute('aria-describedby', hint.id);
+  else if (input.getAttribute('aria-describedby') === hint.id) input.removeAttribute('aria-describedby');
+  if (on && !wasOn && announce) {
+    const label = input.labels?.[0]?.textContent?.trim() || copy.passphrase;
+    announceCaps(`${label}: ${copy.capsLock}`);
+  }
+}
+
+function syncCapsFromEvent(event: KeyboardEvent): void {
+  if (event.code === 'CapsLock' || event.key === 'CapsLock') {
+    // The modifier state on the CapsLock key itself is unreliable: some browsers
+    // report the old state for both keydown and keyup. Track the physical toggle.
+    if (event.type === 'keydown') capsKeyHeld = true;
+    else if (capsKeyHeld) {
+      capsKeyHeld = false;
+      capsOn = !capsOn;
+    }
+  } else {
+    // Other keys report the real state, so they also correct a missed toggle.
+    capsOn = event.getModifierState('CapsLock');
+  }
+  if (document.activeElement instanceof HTMLInputElement) setCapsField(document.activeElement, capsOn);
+}
+
 function closeGate(): void {
   if (!gateEl) return;
   const el = gateEl;
   gateEl = null;
+  window.clearTimeout(capsAnnounceTimer);
+  capsOn = false;
+  capsKeyHeld = false;
   setAppInert(false);
   document.body.classList.remove('auth-locked');
   el.classList.add('is-closing');
@@ -506,16 +557,16 @@ function inputField(
         <button class="gate__reveal" type="button" data-toggle-for="${id}"
           aria-label="${escapeHtml(copy.showPassphrase)}" aria-pressed="false"
           title="${escapeHtml(copy.showPassphrase)}">Show</button>
-        <span class="gate__caps" id="${id}-caps" aria-hidden="true">${escapeHtml(copy.capsLock)}</span>
       </span>`
     : input;
-  return `<label class="gate__field" for="${id}">
-    <span class="gate__label-row">
-      <span class="gate__label">${escapeHtml(label)}</span>
+  return `<div class="gate__field">
+    <div class="gate__label-row">
+      <label class="gate__label" for="${id}">${escapeHtml(label)}</label>
       ${opts.labelLink ?? ''}
-    </span>
+    </div>
     ${control}
-  </label>`;
+    ${opts.reveal ? `<span class="gate__caps" id="${id}-caps">${escapeHtml(copy.capsLock)}</span>` : ''}
+  </div>`;
 }
 
 // Registration may arrive as #/register?invite=... The code is read once and
@@ -748,6 +799,7 @@ function renderGate(screen: GateScreen): void {
         <h1 class="gate__title" id="gate-title">${escapeHtml(title)}</h1>
         <p class="gate__intro">${escapeHtml(intro)}</p>
         <p class="gate__error" role="alert"></p>
+        <div class="sr-only gate__caps-announcer" aria-live="polite" aria-atomic="true"></div>
         ${screen === 'recovery' ? `<div class="gate__form">${form}</div>` : `<form class="gate__form">${form}</form>`}
         ${gateLinks(links, screen === 'login')}
       </div>
@@ -786,14 +838,6 @@ function renderGate(screen: GateScreen): void {
       input.focus();
     });
   });
-  gateEl.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach((input) => {
-    const warn = document.getElementById(`${input.id}-caps`);
-    const check = (e: KeyboardEvent) => warn?.classList.toggle('is-on', e.getModifierState('CapsLock'));
-    input.addEventListener('keydown', check);
-    input.addEventListener('keyup', check);
-    input.addEventListener('blur', () => warn?.classList.remove('is-on'));
-  });
-
   const formEl = gateEl.querySelector<HTMLFormElement>('.gate__form');
   if (!formEl) return;
   const checkConfirm = (values: Record<string, string>, fail: (msg: string, field?: string) => void): boolean => {

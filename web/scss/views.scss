@@ -2388,16 +2388,17 @@
 }
 
 .gate__caps {
-  position: absolute;
-  inset-block-end: -1.1em;
-  inset-inline-end: 0;
-  display: none;
-  color: var(--md-sys-color-error);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.1em;
+  color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-small);
+  visibility: hidden;
 }
 
 .gate__caps.is-on {
-  display: block;
+  visibility: visible;
 }
 
 .gate__field .input[aria-invalid="true"] {
