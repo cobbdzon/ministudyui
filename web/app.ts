@@ -1,4 +1,5 @@
 import { api, errorMessage } from './api.js';
+import { pending } from './pending.js';
 import type { AdminUser, AgentToken, AuthStatus, AuthUser } from './api.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './math.js';
@@ -398,6 +399,7 @@ function closeOpenDialogs(): void {
 
 async function lockNow(): Promise<void> {
   try { await api.auth.logout(); } catch { /* lock locally even if the request fails */ }
+  pending.reset();
   unlocked = false;
   authUser = null;
   stopLive();
@@ -1430,6 +1432,7 @@ function clearSessionState(): void {
 }
 
 window.addEventListener('auth:locked', () => {
+  pending.reset();
   if (!unlocked && !gateEl) {
     openGate('login');
     return;

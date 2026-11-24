@@ -850,6 +850,212 @@ kbd {
   }
 }
 
+/* Stall chip: appears only when a request crosses the 250ms reveal threshold. */
+@property --pending-arc-start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --pending-arc-end {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --pending-dash-animation {
+  syntax: '*';
+  inherits: false;
+  initial-value: #{' , pending-dash 3s ease-in-out infinite'};
+}
+
+.pending-chip {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--space-5) + 56px);
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  font: var(--md-sys-typescale-label-large);
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: pending-in var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-decelerate);
+}
+
+@keyframes pending-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.pending-chip__ring {
+  --pending-size: 18px;
+  --pending-thickness: 2px;
+  --pending-spinner-color: var(--md-sys-color-inverse-primary);
+  --pending-track-color: color-mix(in srgb, var(--md-sys-color-inverse-on-surface) 25%, transparent);
+  --pending-duration: 1.2s;
+  --pending-used-duration: var(--pending-duration);
+  --pending-from: calc(90deg + var(--pending-arc-start, 0deg));
+  --pending-to: calc(90deg + var(--pending-arc-end, 158deg));
+
+  position: relative;
+  flex: none;
+  width: var(--pending-size);
+  height: var(--pending-size);
+  border-radius: 50%;
+  appearance: none;
+  border: 0 solid;
+  background: conic-gradient(
+      from var(--pending-from),
+      var(--pending-spinner-color) calc(var(--pending-to) - var(--pending-from)),
+      transparent 0
+    )
+    var(--pending-track-color);
+
+  @supports (background-clip: border-area) {
+    background-clip: border-area;
+    border: var(--pending-thickness) solid transparent;
+    background-origin: border-box;
+  }
+
+  @supports not (background-clip: border-area) {
+    mask-image: radial-gradient(
+      farthest-side,
+      transparent calc(100% - var(--pending-thickness)),
+      black calc(100% - var(--pending-thickness))
+    );
+  }
+
+  animation: pending-spin var(--pending-used-duration) linear infinite
+    var(--pending-dash-animation, );
+}
+
+/* Native progress chrome must not paint over the ring. Keep vendor
+   pseudo-elements in separate rules: grouped rules are silently dropped. */
+.pending-chip__ring:indeterminate::-webkit-progress-bar {
+  display: none;
+  background: none;
+}
+
+.pending-chip__ring:indeterminate::-webkit-progress-value {
+  display: none;
+  background: none;
+}
+
+.pending-chip__ring:indeterminate::-moz-progress-bar {
+  display: none;
+  background: none;
+}
+
+.pending-chip__ring:indeterminate::slider-fill {
+  display: none;
+  background: none;
+}
+
+@keyframes pending-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes pending-dash {
+  from {
+    --pending-arc-start: 0deg;
+    --pending-arc-end: 3deg;
+  }
+
+  50% {
+    --pending-arc-start: 100deg;
+    --pending-arc-end: 358deg;
+  }
+
+  to {
+    --pending-arc-start: 360deg;
+    --pending-arc-end: 363deg;
+  }
+}
+
+.pending-chip__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-chip__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: var(--md-sys-typescale-mono);
+  opacity: 0.75;
+}
+
+.pending-chip__meta[hidden],
+.pending-chip__dismiss[hidden] {
+  display: none;
+}
+
+.pending-chip__dismiss {
+  flex: none;
+  pointer-events: auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: var(--md-sys-typescale-label-small);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.pending-chip__dismiss:focus-visible {
+  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline-offset: 3px;
+}
+
+@media (max-width: 899px) {
+  .pending-chip {
+    bottom: calc(88px + env(safe-area-inset-bottom) + 56px);
+  }
+}
+
+/* Keep the action label readable; the secondary timing text is a desktop
+   refinement and is the first thing to go when space is tight. */
+@media (max-width: 520px) {
+  .pending-chip__meta {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .pending-chip__ring:indeterminate {
+    forced-color-adjust: none;
+    --pending-spinner-color: CanvasText;
+    --pending-track-color: Canvas;
+  }
+}
+
+/* base.scss kills every animation with !important; restore a slow rotation
+   so reduced-motion users still get a liveness cue alongside the text. */
+@media (prefers-reduced-motion: reduce) {
+  .pending-chip__ring:indeterminate {
+    --pending-dash-animation: ;
+
+    animation-name: pending-spin !important;
+    animation-duration: 6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 .skeleton {
   border-radius: var(--md-sys-shape-corner-small);
   background: linear-gradient(

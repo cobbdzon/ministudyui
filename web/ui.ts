@@ -1,6 +1,7 @@
 import { icon } from './icons.js';
 import { messages } from './messages.js';
 import { escapeHtml } from './math.js';
+import { pending, type PendingState } from './pending.js';
 import type { DeckSummary, QuestionType, Source } from '../shared/types.js';
 
 /* ---------- Formatting ---------- */
@@ -431,4 +432,70 @@ export function busy(button: HTMLButtonElement | null | undefined, value = true)
   if (!button) return;
   button.disabled = value;
   button.setAttribute('aria-busy', value ? 'true' : 'false');
+}
+
+/* ---------- Pending (stall) chip ---------- */
+
+let pendingChip: HTMLElement | null = null;
+let pendingChipRing: HTMLProgressElement | null = null;
+let pendingChipText: HTMLElement | null = null;
+let pendingChipMeta: HTMLElement | null = null;
+let pendingChipDismiss: HTMLButtonElement | null = null;
+let focusBeforeChip: Element | null = null;
+
+function renderPending(state: PendingState): void {
+  if (typeof document === 'undefined') return;
+  const show = state.visible && !document.querySelector('dialog[open]');
+
+  if (!show) {
+    if (pendingChip) {
+      if (pendingChip.contains(document.activeElement)) {
+        pendingChipDismiss?.blur();
+        const target = focusBeforeChip;
+        if (target instanceof HTMLElement && target.isConnected) target.focus();
+      }
+      pendingChip.remove();
+      pendingChip = null;
+      pendingChipRing = null;
+      pendingChipText = null;
+      pendingChipMeta = null;
+      pendingChipDismiss = null;
+      focusBeforeChip = null;
+    }
+    return;
+  }
+
+  if (!pendingChip) {
+    focusBeforeChip = document.activeElement;
+    pendingChip = document.createElement('div');
+    pendingChip.className = 'pending-chip';
+    pendingChip.innerHTML = `
+      <progress class="pending-chip__ring" aria-label="Working"></progress>
+      <span class="pending-chip__text">Working…</span>
+      <span class="pending-chip__meta" hidden></span>
+      <button class="pending-chip__dismiss" type="button" hidden>Dismiss</button>`;
+    document.body.appendChild(pendingChip);
+    pendingChipRing = pendingChip.querySelector('progress');
+    pendingChipText = pendingChip.querySelector('.pending-chip__text');
+    pendingChipMeta = pendingChip.querySelector('.pending-chip__meta');
+    pendingChipDismiss = pendingChip.querySelector('.pending-chip__dismiss');
+    pendingChipDismiss?.addEventListener('click', () => pending.dismiss());
+  }
+
+  const text = state.count > 1 ? `${state.label} · ${state.count} in progress` : state.label;
+  if (pendingChipText && pendingChipText.textContent !== text) pendingChipText.textContent = text;
+  pendingChipRing?.setAttribute('aria-label', state.label);
+  if (pendingChipMeta) {
+    const stalled = state.phase === 'stalled' || state.phase === 'long';
+    pendingChipMeta.hidden = !stalled;
+    pendingChipMeta.textContent = state.phase === 'long'
+      ? 'Taking longer than usual'
+      : `Still working… · ${Math.floor(state.elapsedMs / 1000)}s`;
+  }
+  if (pendingChipDismiss) pendingChipDismiss.hidden = state.phase !== 'long';
+}
+
+if (typeof document !== 'undefined') {
+  pending.subscribe(renderPending);
+  document.addEventListener('close', () => renderPending(pending.state()), true);
 }

@@ -10,6 +10,8 @@ import type {
   UiContext, UiContextInput,
 } from '../shared/types.js';
 
+import { pending } from './pending.js';
+
 const useMock = new URLSearchParams(location.search).has('mock');
 export const rpc = hc<AppType>('/');
 
@@ -22,23 +24,34 @@ export class ApiError extends Error {
 
 // hc methods return a Promise<ClientResponse>. Infer the payload from json()
 // (ClientResponse.ok is boolean, not an `ok: true` literal on most handlers).
+// Every request is registered with the stall tracker here so a hung server
+// cannot leave a click looking like it did nothing.
 export async function unwrap<T>(
   res: Promise<{ ok: boolean; status: number; json(): Promise<T> }>,
+  opts: string | { label?: string; action?: boolean; silent?: boolean } = {},
 ): Promise<T> {
-  const response = await res;
-  if (response.ok) return response.json();
-  if (response.status === 401) {
-    window.dispatchEvent(new CustomEvent('auth:locked'));
+  const { label, action, silent } = typeof opts === 'string'
+    ? { label: opts, action: true, silent: false }
+    : opts;
+  const task = silent ? null : pending.begin(label ?? 'Working…', { action: action ?? !!label });
+  try {
+    const response = await res;
+    if (response.ok) return await response.json();
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:locked'));
+    }
+    let raw: unknown = null;
+    try { raw = await response.json(); } catch { /* body may be empty */ }
+    const b = (raw && typeof raw === 'object' ? raw : {}) as Partial<ApiErrorBody>;
+    throw new ApiError(response.status, {
+      code: String(b.code ?? 'ERROR'),
+      message: String(b.message ?? `Request failed (${response.status})`),
+      field: b.field,
+      hint: b.hint,
+    });
+  } finally {
+    task?.end();
   }
-  let raw: unknown = null;
-  try { raw = await response.json(); } catch { /* body may be empty */ }
-  const b = (raw && typeof raw === 'object' ? raw : {}) as Partial<ApiErrorBody>;
-  throw new ApiError(response.status, {
-    code: String(b.code ?? 'ERROR'),
-    message: String(b.message ?? `Request failed (${response.status})`),
-    field: b.field,
-    hint: b.hint,
-  });
 }
 
 export function errorMessage(err: unknown, fallback = 'Something went wrong'): string {
@@ -151,45 +164,47 @@ export interface Api {
 const real: Api = {
   auth: {
     async status() {
-      const res = await unwrap<{ status: string; user: AuthUser | null }>(rpc.api.auth.status.$get());
+      const res = await unwrap<{ status: string; user: AuthUser | null }>(
+        rpc.api.auth.status.$get(), 'Checking session…',
+      );
       return { status: res.status as AuthStatus['status'], user: res.user };
     },
-    setup: (input) => unwrap(rpc.api.auth.setup.$post({ json: input })),
-    login: (input) => unwrap(rpc.api.auth.login.$post({ json: input })),
-    logout: () => unwrap(rpc.api.auth.logout.$post()),
-    recover: (input) => unwrap(rpc.api.auth.recover.$post({ json: input })),
-    register: (input) => unwrap(rpc.api.auth.register.$post({ json: input })),
-    changePassphrase: (input) => unwrap(rpc.api.auth['change-passphrase'].$post({ json: input })),
+    setup: (input) => unwrap(rpc.api.auth.setup.$post({ json: input }), 'Creating account…'),
+    login: (input) => unwrap(rpc.api.auth.login.$post({ json: input }), 'Checking passphrase…'),
+    logout: () => unwrap(rpc.api.auth.logout.$post(), 'Locking…'),
+    recover: (input) => unwrap(rpc.api.auth.recover.$post({ json: input }), 'Recovering account…'),
+    register: (input) => unwrap(rpc.api.auth.register.$post({ json: input }), 'Creating account…'),
+    changePassphrase: (input) => unwrap(rpc.api.auth['change-passphrase'].$post({ json: input }), 'Changing passphrase…'),
   },
 
-  adminUsers: () => unwrap(rpc.api.admin.users.$get()),
-  adminInvites: () => unwrap(rpc.api.admin.invites.$get()),
+  adminUsers: () => unwrap(rpc.api.admin.users.$get(), 'Loading users…'),
+  adminInvites: () => unwrap(rpc.api.admin.invites.$get(), 'Loading invites…'),
   createInvite: (ttlSeconds) => unwrap(rpc.api.admin.invites.$post({
     json: ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds },
-  })),
+  }), 'Creating invite…'),
   setUserDisabled: (id, disabled) => unwrap(rpc.api.admin.users[':id'].$patch({
     param: { id: String(id) }, json: { disabled },
-  })),
-  deleteUser: (id) => unwrap(rpc.api.admin.users[':id'].$delete({ param: { id: String(id) } })),
+  }), 'Updating user…'),
+  deleteUser: (id) => unwrap(rpc.api.admin.users[':id'].$delete({ param: { id: String(id) } }), 'Deleting user…'),
 
-  agentTokens: () => unwrap(rpc.api['agent-tokens'].$get()),
+  agentTokens: () => unwrap(rpc.api['agent-tokens'].$get(), 'Loading tokens…'),
   createAgentToken: (label, readOnly) => unwrap(rpc.api['agent-tokens'].$post({
     json: { label, read_only: readOnly },
-  })),
-  revokeAgentToken: (id) => unwrap(rpc.api['agent-tokens'][':id'].$delete({ param: { id } })),
-  exportBundle: () => unwrap(rpc.api.export.$get()),
+  }), 'Creating token…'),
+  revokeAgentToken: (id) => unwrap(rpc.api['agent-tokens'][':id'].$delete({ param: { id } }), 'Revoking token…'),
+  exportBundle: () => unwrap(rpc.api.export.$get(), 'Preparing export…'),
 
-  decks: () => unwrap(rpc.api.decks.$get()),
+  decks: () => unwrap(rpc.api.decks.$get(), 'Loading decks…'),
   createDeck: (input) => unwrap(rpc.api.decks.$post({
     json: { name: input.name, description: input.description ?? '' },
-  })),
+  }), 'Creating deck…'),
   deleteDeck: (id, confirmName, deleteQuizzes = false) => unwrap(rpc.api.decks[':id'].$delete({
     param: { id: String(id) },
     json: { confirm_name: confirmName, delete_quizzes: deleteQuizzes },
-  })),
+  }), 'Deleting deck…'),
   updateDeck: (id, patch) => unwrap(rpc.api.decks[':id'].$patch({
     param: { id: String(id) }, json: patch,
-  })),
+  }), 'Saving deck…'),
 
   async cards(opts = {}) {
     const query: Record<string, string> = {};
@@ -199,72 +214,72 @@ const real: Api = {
     if (opts.source) query.source = opts.source;
     query.limit = String(opts.limit ?? 100);
     query.offset = String(opts.offset ?? 0);
-    const data = await unwrap(rpc.api.cards.$get({ query }));
+    const data = await unwrap(rpc.api.cards.$get({ query }), 'Loading cards…');
     return { ...data, cards: data.cards.map(normalizeCard) };
   },
-  addCards: (deck, cards) => unwrap(rpc.api.cards.$post({ json: { deck, cards } })),
-  importBundle: (bundle) => unwrap(rpc.api.import.$post({ json: bundle })),
+  addCards: (deck, cards) => unwrap(rpc.api.cards.$post({ json: { deck, cards } }), 'Adding cards…'),
+  importBundle: (bundle) => unwrap(rpc.api.import.$post({ json: bundle }), 'Importing…'),
   updateCard: (id, patch) => unwrap(rpc.api.cards[':id'].$patch({
     param: { id: String(id) }, json: patch,
-  })),
+  }), 'Saving card…'),
   adjustCardSchedule: (id, patch) => unwrap(rpc.api.cards[':id'].schedule.$patch({
     param: { id: String(id) }, json: patch,
-  })),
-  deleteCards: (ids) => unwrap(rpc.api.cards.$delete({ json: { card_ids: ids } })),
+  }), 'Saving schedule…'),
+  deleteCards: (ids) => unwrap(rpc.api.cards.$delete({ json: { card_ids: ids } }), 'Deleting cards…'),
 
   reviewQueue: (deck, limit = 10) => unwrap(rpc.api.review.queue.$get({
     query: { deck: String(deck ?? ''), limit: String(limit) },
-  })),
-  review: (cardId, rating) => unwrap(rpc.api.review.$post({ json: { card_id: cardId, rating } })),
-  undo: () => unwrap(rpc.api.review.undo.$post()),
+  }), 'Loading queue…'),
+  review: (cardId, rating) => unwrap(rpc.api.review.$post({ json: { card_id: cardId, rating } }), 'Saving review…'),
+  undo: () => unwrap(rpc.api.review.undo.$post(), 'Undoing review…'),
 
   quizzes: (deck) => unwrap(rpc.api.quizzes.$get({
     query: deck === undefined || deck === null ? {} : { deck: String(deck) },
-  })),
+  }), 'Loading quizzes…'),
   quiz: (id, opts = {}) => unwrap(rpc.api.quizzes[':id'].$get({
     param: { id: String(id) }, query: { include_answers: String(opts.includeAnswers ?? true) },
-  })),
+  }), 'Loading quiz…'),
   updateQuiz: (id, patch) => unwrap(rpc.api.quizzes[':id'].$patch({
     param: { id: String(id) }, json: patch,
-  })),
+  }), 'Saving quiz…'),
   deleteQuiz: (id, confirmTitle, deleteDeck = false) => unwrap(rpc.api.quizzes[':id'].$delete({
     param: { id: String(id) }, json: { confirm_title: confirmTitle, delete_deck: deleteDeck },
-  })),
+  }), 'Deleting quiz…'),
 
   attempts: (opts = {}) => {
     const query: Record<string, string> = {};
     if (opts.status) query.status = opts.status;
     if (opts.quizId) query.quiz_id = String(opts.quizId);
     query.limit = String(opts.limit ?? 20);
-    return unwrap(rpc.api.attempts.$get({ query }));
+    return unwrap(rpc.api.attempts.$get({ query }), 'Loading attempts…');
   },
   attempt: (id, opts = {}) => unwrap(rpc.api.attempts[':id'].$get({
     param: { id: String(id) }, query: { include_answers: String(opts.includeAnswers ?? true) },
-  })),
+  }), 'Loading attempt…'),
   async startAttempt(quizId) {
-    return { attempt: await unwrap(rpc.api.attempts.$post({ json: { quiz_id: quizId } })) };
+    return { attempt: await unwrap(rpc.api.attempts.$post({ json: { quiz_id: quizId } }), 'Starting quiz…') };
   },
   async restartAttempt(quizId) {
-    return { attempt: await unwrap(rpc.api.attempts.restart.$post({ json: { quiz_id: quizId } })) };
+    return { attempt: await unwrap(rpc.api.attempts.restart.$post({ json: { quiz_id: quizId } }), 'Restarting quiz…') };
   },
   answerAttempt: (attemptId, questionId, response) => unwrap(
     rpc.api.attempts[':id'].answers[':qid'].$patch({
       param: { id: String(attemptId), qid: String(questionId) }, json: { response },
-    }),
+    }), 'Saving answer…',
   ),
-  submitAttempt: (id) => unwrap(rpc.api.attempts[':id'].submit.$post({ param: { id: String(id) } })),
+  submitAttempt: (id) => unwrap(rpc.api.attempts[':id'].submit.$post({ param: { id: String(id) } }), 'Submitting quiz…'),
 
-  pending: (limit = 20) => unwrap(rpc.api.grading.pending.$get({ query: { limit: String(limit) } })),
+  pending: (limit = 20) => unwrap(rpc.api.grading.pending.$get({ query: { limit: String(limit) } }), 'Loading grading queue…'),
   grade: (answerId, points, feedback) => unwrap(rpc.api.grading[':id'].$post({
     param: { id: String(answerId) }, json: { points, feedback },
-  })),
+  }), 'Saving grade…'),
 
   stats: (deck) => unwrap(rpc.api.stats.$get({
     query: deck !== undefined ? { deck: String(deck) } : {},
-  })),
+  }), 'Loading stats…'),
 
-  uiContext: () => unwrap(rpc.api.ui.context.$get()),
-  setUiContext: (context) => unwrap(rpc.api.ui.context.$put({ json: context })),
+  uiContext: () => unwrap(rpc.api.ui.context.$get(), 'Loading focus…'),
+  setUiContext: (context) => unwrap(rpc.api.ui.context.$put({ json: context }), { silent: true }),
 
   subscribe(cb) {
     if (typeof EventSource === 'undefined') return () => {};
