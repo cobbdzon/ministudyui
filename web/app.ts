@@ -14,6 +14,7 @@ import * as home from './views/home.js';
 import * as review from './views/review.js';
 import * as deck from './views/deck.js';
 import * as quizzes from './views/quizzes.js';
+import * as sharedView from './views/shared.js';
 import * as quiz from './views/quiz.js';
 import * as attempt from './views/attempt.js';
 import * as grading from './views/grading.js';
@@ -32,7 +33,9 @@ const NAV: NavItem[] = [
   { id: 'stats', label: 'Stats', icon: 'monitoring', href: '#/stats' },
 ];
 
-const VIEWS: Record<RoutedViewId, ViewModule> = { home, review, deck, quizzes, quiz, attempt, grading, stats };
+const VIEWS: Record<RoutedViewId, ViewModule> = {
+  home, review, deck, quizzes, shared: sharedView, quiz, attempt, grading, stats,
+};
 const ROUTED_IDS = new Set<string>(Object.keys(VIEWS));
 function isRoutedViewId(value: string): value is RoutedViewId {
   return ROUTED_IDS.has(value);
@@ -1277,7 +1280,7 @@ function parseHash(): string[] {
 
 function activeNav(viewId: ViewId): string {
   if (viewId === 'home' || viewId === 'review' || viewId === 'deck') return 'home';
-  if (viewId === 'quizzes' || viewId === 'quiz' || viewId === 'attempt') return 'quizzes';
+  if (viewId === 'quizzes' || viewId === 'shared' || viewId === 'quiz' || viewId === 'attempt') return 'quizzes';
   return viewId;
 }
 

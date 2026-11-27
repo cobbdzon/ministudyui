@@ -6,6 +6,7 @@ import * as study from '../boxes/study/index.js';
 import * as attempts from '../boxes/attempts/index.js';
 import * as latex from '../boxes/latex/index.js';
 import * as context from '../boxes/context/index.js';
+import * as shared from '../boxes/shared/index.js';
 import { asAppError } from '../boxes/errors.js';
 
 // Tool names, descriptions and input schemas are copied verbatim from the
@@ -14,12 +15,14 @@ const MUTATING = new Set([
   'deck_create', 'deck_delete', 'deck_update', 'card_add', 'card_update',
   'card_schedule', 'card_delete', 'quiz_create', 'quiz_add_questions',
   'quiz_update', 'quiz_delete', 'question_update', 'question_delete', 'answer_grade',
+  'shared_quiz_publish', 'shared_quiz_unpublish', 'shared_quiz_import',
 ]);
 const DESTRUCTIVE = new Set([
   'deck_delete', 'card_delete', 'quiz_delete', 'question_delete', 'answer_grade',
+  'shared_quiz_unpublish',
 ]);
 
-export interface ToolOptions { readOnly: boolean }
+export interface ToolOptions { readOnly: boolean; username: string }
 
 function ok(data: object): CallToolResult {
   return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: true, ...data }) }] };
@@ -101,6 +104,14 @@ const QuizListInput = z.object({ deck: DeckRef.optional(), limit: z.number().int
 const QuizUpdateInput = z.object({ quiz_id: Id, title: z.string().min(1).max(200).optional(), description: z.string().max(2000).optional(), deck: DeckRef.optional(), source: z.enum(['user', 'ai', 'import']).optional(), shuffle: z.boolean().optional() });
 const QuizDeleteInput = z.object({ quiz_id: Id, confirm_title: z.string() });
 const QuizOutlineInput = z.object({ quiz_id: Id });
+const SharedListInput = z.object({
+  query: z.string().max(200).optional(),
+  mine: z.boolean().default(false),
+  limit: z.number().int().min(1).max(100).default(50),
+});
+const SharedGetInput = z.object({ shared_id: Id });
+const SharedPublishInput = z.object({ quiz_id: Id });
+const SharedImportInput = z.object({ shared_id: Id });
 const QuestionUpdateInput = z.object({ questions: z.array(QuestionPatch).min(1).max(100) });
 const QuestionDeleteInput = z.object({ question_ids: z.array(Id).min(1).max(100), renumber: z.boolean().default(true) });
 const QueueInput = z.object({ deck: DeckRef, limit: z.number().int().min(1).max(50).default(10) });
@@ -125,6 +136,10 @@ type QuizListArgs = z.infer<typeof QuizListInput>;
 type QuizUpdateArgs = z.infer<typeof QuizUpdateInput>;
 type QuizDeleteArgs = z.infer<typeof QuizDeleteInput>;
 type QuizOutlineArgs = z.infer<typeof QuizOutlineInput>;
+type SharedListArgs = z.infer<typeof SharedListInput>;
+type SharedGetArgs = z.infer<typeof SharedGetInput>;
+type SharedPublishArgs = z.infer<typeof SharedPublishInput>;
+type SharedImportArgs = z.infer<typeof SharedImportInput>;
 type QuestionUpdateArgs = z.infer<typeof QuestionUpdateInput>;
 type QuestionDeleteArgs = z.infer<typeof QuestionDeleteInput>;
 type QueueArgs = z.infer<typeof QueueInput>;
@@ -161,6 +176,29 @@ register('question_update', { description: 'Edit existing questions in bulk by i
   }),
 })));
 register('question_delete', { description: 'Delete questions by id and renumber the remaining ones', inputSchema: QuestionDeleteInput }, wrap((a: QuestionDeleteArgs) => library.questionDelete({ questionIds: a.question_ids, renumber: a.renumber })));
+
+// Shared library is plaintext by design. Publishing copies the quiz and its
+// answers out of the user's encrypted database; say so in the tool contract.
+register('shared_quiz_list', {
+  description: 'List quizzes shared by users of this instance. The shared library is unencrypted and includes answers.',
+  inputSchema: SharedListInput,
+}, wrap((a: SharedListArgs) => ({ quizzes: shared.list({ q: a.query, mine: a.mine, limit: a.limit }) })));
+register('shared_quiz_get', {
+  description: 'Get a shared quiz with its questions and answers from the unencrypted shared library',
+  inputSchema: SharedGetInput,
+}, wrap((a: SharedGetArgs) => shared.get({ id: a.shared_id })));
+register('shared_quiz_publish', {
+  description: 'Publish a snapshot of one of your quizzes to the shared, unencrypted library. Includes questions, answers and explanations; any signed-in user can read and import it. Republishing replaces the previous snapshot.',
+  inputSchema: SharedPublishInput,
+}, wrap((a: SharedPublishArgs) => shared.publish({ quizId: a.quiz_id, ownerUsername: opts.username })));
+register('shared_quiz_unpublish', {
+  description: 'Remove one of your shared quizzes from the shared library (admins may remove any)',
+  inputSchema: SharedGetInput,
+}, wrap((a: SharedGetArgs) => shared.unpublish({ id: a.shared_id })));
+register('shared_quiz_import', {
+  description: 'Import a shared quiz into your own library; the copy is encrypted with your key and has no linked deck',
+  inputSchema: SharedImportInput,
+}, wrap((a: SharedImportArgs) => shared.importInto({ id: a.shared_id })));
 
 register('study_next_due', { description: 'Next due cards', inputSchema: QueueInput }, wrap((a: QueueArgs) => ({ cards: study.queue(a) })));
 register('study_stats', { description: 'Study stats', inputSchema: StatsInput }, wrap((a: StatsArgs) => study.stats(a)));

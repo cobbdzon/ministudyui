@@ -8,7 +8,7 @@ export type {
   LatexInput, PendingQuery, QuizCreateInput, QuizDeleteInput, QuizGetQuery,
   QuizIdInput, QuizListQuery, QuizUpdateInput as QuizUpdatePatch, ReviewInput, ReviewQueueQuery, StatsQuery,
   GradeInput, AnswerInput, QuestionsBodyInput, QuestionInput, AttemptGetQuery, AttemptListQuery,
-  UiContextInput,
+  UiContextInput, SharedPublishInput, SharedListQuery, SharedStatusQuery,
 } from './schemas.js';
 
 // ---- primitives ----
@@ -112,6 +112,20 @@ export interface ImportResult {
   quizzes_created: number; questions_added: number;
 }
 export interface ChangeEvent { entity: string; id: number; op: string }
+
+// ---- shared (plaintext) quiz library ----
+export interface SharedQuizSummary {
+  id: number; title: string; description: string; owner_username: string;
+  shuffle: boolean; question_count: number; total_points: number;
+  published_at: string; updated_at: string; mine: boolean;
+}
+export interface SharedQuestionDto {
+  position: number; type: QuestionType; prompt: string; explanation: string; points: number;
+  choices?: Choice[]; answer: QuestionAnswer;
+}
+export interface SharedQuizDetail extends SharedQuizSummary { questions: SharedQuestionDto[] }
+export interface SharedStatus { shared_id: number; stale: boolean; updated_at: string }
+export interface SharedPublishResponse { ok: true; quiz: SharedQuizSummary }
 
 // ---- current UI context (shared with the MCP server through SQLite) ----
 export interface UiContext {

@@ -8,8 +8,10 @@ import {
   markdownInline as mdi,
   renderMath,
 } from '../math.js';
-import type { AttemptRow, AttemptStart, DeckSummary, QuizQuestionDto, QuizRow } from '../../shared/types.js';
-import { confirmDanger, dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
+import type {
+  AttemptRow, AttemptStart, DeckSummary, QuizQuestionDto, QuizRow, SharedStatus,
+} from '../../shared/types.js';
+import { busy, confirmDanger, dialog, fmtScore, plural, relTime, statusChip, toast, typeLabel } from '../ui.js';
 
 const LETTERS = 'ABCDEFGH';
 
@@ -30,6 +32,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   let runQuestions: QuizQuestionDto[] = [];
   let attempts: AttemptRow[] = [];
   let decks: DeckSummary[] = [];
+  let shareStatus: SharedStatus | null = null;
   let mode: 'overview' | 'run' = 'overview';
   let run: QuizRun | null = null;
 
@@ -68,17 +71,19 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
   }
 
   async function loadOverview(): Promise<void> {
-    const [quizRes, quizzesRes, attemptsRes, decksRes] = await Promise.allSettled([
+    const [quizRes, quizzesRes, attemptsRes, decksRes, shareRes] = await Promise.allSettled([
       ctx.api.quiz(Number(quizId), { includeAnswers: false }),
       ctx.api.quizzes(),
       ctx.api.attempts({ quizId: Number(quizId), limit: 20 }),
       ctx.api.decks(),
+      ctx.api.sharedStatus(Number(quizId)),
     ]);
     if (quizRes.status === 'rejected') throw quizRes.reason;
     quiz = quizRes.value.quiz;
     questions = quizRes.value.questions || [];
     attempts = attemptsRes.status === 'fulfilled' ? attemptsRes.value.attempts || [] : [];
     decks = decksRes.status === 'fulfilled' ? decksRes.value.decks || [] : [];
+    shareStatus = shareRes.status === 'fulfilled' ? shareRes.value.status : null;
     mode = 'overview';
     clearContext();
     renderOverview();
@@ -101,6 +106,10 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
       `<span class="chip chip--mono">${totalPoints()} points</span>`,
       quiz?.shuffle ? `<span class="chip chip--tonal">Shuffled</span>` : '',
       quiz?.source === 'ai' ? `<span class="chip chip--tonal">${icon('auto_awesome')}AI-made</span>` : '',
+      shareStatus
+        ? `<span class="chip chip--${shareStatus.stale ? 'warning' : 'tonal'}">${icon('upload')}${shareStatus.stale ? 'Shared · update available' : 'Shared'
+        }</span>`
+        : '',
     ]
       .filter(Boolean)
       .join('');
@@ -124,7 +133,11 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
                  <button class="btn btn--text" id="start">Start over</button>`
         : `<button class="btn btn--filled" id="start">${icon('play_arrow')}Start attempt</button>`
       }
-          <button class="btn btn--outlined btn--danger" id="delete-quiz">${icon('delete')}Delete</button>
+          <div class="page-actions__end">
+            <button class="btn btn--outlined btn--danger" id="delete-quiz">${icon('delete')}Delete</button>
+            <button class="btn btn--outlined" id="share-quiz">${icon('upload')}${shareStatus ? 'Manage sharing' : 'Share'
+      }</button>
+          </div>
         </div>
       </header>
 
@@ -179,6 +192,7 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     el.querySelector('#start')?.addEventListener('click', startAttempt);
     el.querySelector('#resume')?.addEventListener('click', () => resumeAttempt(inProgress));
     el.querySelector('#delete-quiz')?.addEventListener('click', openDeleteQuiz);
+    el.querySelector('#share-quiz')?.addEventListener('click', openShareDialog);
     el.querySelector('#shuffle-toggle')?.addEventListener('change', async (e: Event) => {
       const input = e.currentTarget;
       if (!(input instanceof HTMLInputElement) || !quiz) return;
@@ -195,6 +209,80 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
     });
     renderMath(el.querySelector('#quiz-description'));
     el.querySelectorAll('.question-preview__prompt').forEach((p) => renderMath(p));
+  }
+
+  function openShareDialog(): void {
+    if (!quiz) return;
+    const status = shareStatus;
+    void dialog({
+      title: status ? 'Manage shared quiz' : 'Share this quiz',
+      body: `
+        <div class="auth-note auth-note--warning">
+          ${icon('fact_check')}
+          <span>Publishing copies this quiz, its questions, answers and explanations into the shared,
+            <strong>unencrypted</strong> library. Any signed-in user can read and import it. Later edits stay
+            private until you republish.</span>
+        </div>
+        ${status ? `<p>Shared ${esc(relTime(status.updated_at))}. ${status.stale
+            ? '<strong>The private quiz has changed since it was published.</strong>'
+            : 'The shared copy is up to date.'
+          }</p>` : ''}
+        <p class="gate__error" role="alert"></p>`,
+      actions: status
+        ? [
+          { label: 'Unpublish', value: 'unpublish', variant: 'btn--text', danger: true },
+          { label: status.stale ? 'Republish' : 'Publish again', value: 'publish', variant: 'btn--filled' },
+          { label: 'Close', value: 'close', variant: 'btn--tonal' },
+        ]
+        : [
+          { label: 'Cancel', value: 'cancel', variant: 'btn--tonal' },
+          { label: 'Publish quiz', value: 'publish', variant: 'btn--filled' },
+        ],
+      onMount(root, close) {
+        const error = root.querySelector<HTMLElement>('.gate__error');
+        const action = (value: string): HTMLButtonElement | null =>
+          root.querySelector<HTMLButtonElement>(`button[value="${value}"]`);
+        const run = async (kind: 'publish' | 'unpublish', button: HTMLButtonElement | null): Promise<void> => {
+          if (error) error.textContent = '';
+          if (button) busy(button, true);
+          try {
+            if (kind === 'publish') {
+              const res = await ctx.api.publishQuiz(Number(quizId));
+              toast(`“${res.quiz.title}” is now shared`, { icon: 'check_circle' });
+            } else {
+              if (!status) return;
+              const ok = await confirmDanger({
+                title: 'Unpublish this quiz?',
+                body: 'The shared copy will be removed. Your private quiz is not changed.',
+                confirmLabel: 'Unpublish',
+              });
+              if (!ok) return;
+              await ctx.api.unpublishSharedQuiz(status.shared_id);
+              toast('Removed from the shared library', { icon: 'check_circle' });
+            }
+            close('done');
+            window.dispatchEvent(new CustomEvent('live:change', {
+              detail: [{ entity: 'quiz', op: 'update' }],
+            }));
+            await loadOverview();
+          } catch (err) {
+            if (error) error.textContent = errorMessage(err, 'Could not update sharing.');
+          } finally {
+            if (button) busy(button, false);
+          }
+        };
+        action('publish')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void run('publish', e.currentTarget as HTMLButtonElement);
+        });
+        action('unpublish')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void run('unpublish', e.currentTarget as HTMLButtonElement);
+        });
+      },
+    });
   }
 
   function openDeleteQuiz(): void {

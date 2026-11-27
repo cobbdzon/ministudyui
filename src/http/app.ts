@@ -16,6 +16,7 @@ import * as auth from '../boxes/auth/index.js';
 import * as scope from '../boxes/scope/index.js';
 import * as userdb from '../boxes/userdb/index.js';
 import * as exporter from '../boxes/export/index.js';
+import * as shared from '../boxes/shared/index.js';
 import { REPO_ROOT } from '../boxes/paths.js';
 import { serveStatic } from './static.js';
 import { v } from './validate.js';
@@ -225,6 +226,9 @@ const routes = app
     const id = parseId(c.req.param('id'));
     session.destroyAllForUser(id);
     auth.deleteUser(id);
+    // Only remove snapshots after the account itself is gone, so a failed
+    // deletion cannot leave a user without their published copies.
+    shared.deleteAllForUser(id);
     return c.json({ ok: true as const });
   })
 
@@ -356,6 +360,32 @@ const routes = app
   // import
   .post('/api/import', v('json', S.BundleSchema), (c) =>
     c.json(library.importBundle(c.req.valid('json'))))
+  // shared (plaintext) quiz library — session-gated like every /api route
+  .get('/api/shared/quizzes', v('query', S.SharedListQuerySchema), (c) => {
+    const q = c.req.valid('query');
+    return c.json({ quizzes: shared.list({
+      q: q.q, mine: q.mine === '1' || q.mine === 'true',
+      limit: Number(q.limit || 0) || 50,
+    }) });
+  })
+  .get('/api/shared/quizzes/:id', (c) =>
+    c.json(shared.get({ id: parseId(c.req.param('id')) })))
+  .get('/api/shared/status', v('query', S.SharedStatusQuerySchema), (c) => {
+    const quizId = Number(c.req.valid('query').quiz_id || 0);
+    return c.json({ status: Number.isFinite(quizId) && quizId > 0 ? shared.statusForQuiz({ quizId }) : null });
+  })
+  .post('/api/shared/quizzes', v('json', S.SharedPublishSchema), (c) => {
+    const s = currentSession(c)!;
+    return c.json({ ok: true as const, quiz: shared.publish({
+      quizId: c.req.valid('json').quiz_id, ownerUsername: s.username,
+    }) });
+  })
+  .delete('/api/shared/quizzes/:id', (c) => {
+    const s = currentSession(c)!;
+    return c.json(shared.unpublish({ id: parseId(c.req.param('id')), allowAny: s.isAdmin }));
+  })
+  .post('/api/shared/quizzes/:id/import', (c) =>
+    c.json(shared.importInto({ id: parseId(c.req.param('id')) })))
   // attempts
   .post('/api/attempts/restart', v('json', S.QuizIdBodySchema), (c) =>
     c.json(attempts.restart({ quizId: c.req.valid('json').quiz_id })))

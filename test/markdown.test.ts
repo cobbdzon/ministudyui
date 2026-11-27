@@ -32,6 +32,16 @@ test('raw HTML is escaped and unsafe link targets are blocked', () => {
   assert.match(html, /src="#"/);
 });
 
+test('obfuscated javascript URLs are still blocked', () => {
+  // A control character breaks the link syntax entirely, so no anchor is emitted.
+  assert.doesNotMatch(markdownInline('[click](java\tscript:alert(1))'), /<a\b/i);
+  // Entity-obfuscation must not decode back into a javascript: URL.
+  const entity = markdownInline('[click](java&#9;script:alert(1))');
+  assert.doesNotMatch(entity, /href="javascript/i);
+  assert.doesNotMatch(entity, /href="[^"]*&#9;/i);
+  assert.match(markdownInline('[x](//evil.example)'), /href="#"/);
+});
+
 test('blocks are separated without stray newlines from pre-wrap output', () => {
   assert.doesNotMatch(markdown('first\n\nsecond'), />\s*\n\s*</);
 });

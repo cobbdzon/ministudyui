@@ -21,6 +21,8 @@ function copyInto(source: string, dest: string): void {
 const sources: string[] = [];
 const authFile = join(root, 'auth.db');
 if (existsSync(authFile)) sources.push(authFile);
+const sharedFile = join(root, 'shared.db');
+if (existsSync(sharedFile)) sources.push(sharedFile);
 const usersDir = join(root, 'users');
 if (existsSync(usersDir)) {
   for (const name of readdirSync(usersDir)) {
@@ -30,7 +32,9 @@ if (existsSync(usersDir)) {
 
 mkdirSync(join(target, 'users'), { recursive: true });
 for (const source of sources) {
-  const name = source === authFile ? 'auth.db' : `users/${source.split('/').pop()}`;
+  const name = source === authFile ? 'auth.db'
+    : source === sharedFile ? 'shared.db'
+      : `users/${source.split('/').pop()}`;
   copyInto(source, join(target, name));
 }
 

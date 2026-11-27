@@ -1,10 +1,13 @@
 import * as auth from '../boxes/auth/index.js';
+import * as shared from '../boxes/shared/index.js';
 import { ensureDataDir } from '../boxes/paths.js';
 import { app, config } from './app.js';
 
 ensureDataDir();
 auth.open();
 auth.migrate();
+shared.open();
+shared.migrate();
 
 Bun.serve({
   fetch: app.fetch,

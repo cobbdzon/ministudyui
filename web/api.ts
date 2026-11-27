@@ -6,7 +6,8 @@ import type {
   AnswerRow, ApiErrorBody, AttemptRow, AttemptStart, AttemptStatus, AttemptSummary,
   Bundle, CardDto, CardInput, CardPatchInput, CardRow, CardScheduleInput, ChangeEvent, DeckCreateInput, DeckRef,
   DeckSummary, DeckUpdateInput, ImportResult, OkResponse, PendingAnswerDto, QuizQuestionDto,
-  QuizRow, QuizSummary, QuizUpdatePatch, Rating, ReviewCardDto, Source, StatsDto,
+  QuizRow, QuizSummary, QuizUpdatePatch, Rating, ReviewCardDto, SharedPublishResponse,
+  SharedQuizDetail, SharedQuizSummary, SharedStatus, Source, StatsDto,
   UiContext, UiContextInput,
 } from '../shared/types.js';
 
@@ -135,6 +136,12 @@ export interface Api {
   }): Promise<{ cards: CardDto[]; total: number }>;
   addCards(deck: DeckRef, cards: CardInput[]): Promise<{ card_ids: number[] }>;
   importBundle(bundle: Bundle): Promise<ImportResult>;
+  sharedQuizzes(opts?: { q?: string; mine?: boolean; limit?: number }): Promise<{ quizzes: SharedQuizSummary[] }>;
+  sharedQuiz(id: number): Promise<SharedQuizDetail>;
+  sharedStatus(quizId: number): Promise<{ status: SharedStatus | null }>;
+  publishQuiz(quizId: number): Promise<SharedPublishResponse>;
+  unpublishSharedQuiz(id: number): Promise<OkResponse>;
+  importSharedQuiz(id: number): Promise<ImportResult>;
   updateCard(id: number, patch: CardPatchInput): Promise<OkResponse>;
   adjustCardSchedule(id: number, patch: CardScheduleInput): Promise<OkResponse>;
   deleteCards(ids: number[]): Promise<OkResponse>;
@@ -219,6 +226,26 @@ const real: Api = {
   },
   addCards: (deck, cards) => unwrap(rpc.api.cards.$post({ json: { deck, cards } }), 'Adding cards…'),
   importBundle: (bundle) => unwrap(rpc.api.import.$post({ json: bundle }), 'Importing…'),
+
+  async sharedQuizzes(opts = {}) {
+    const query: Record<string, string> = {};
+    if (opts.q) query.q = opts.q;
+    if (opts.mine) query.mine = '1';
+    if (opts.limit) query.limit = String(opts.limit);
+    return unwrap(rpc.api.shared.quizzes.$get({ query }), 'Loading shared quizzes…');
+  },
+  sharedQuiz: (id) => unwrap(rpc.api.shared.quizzes[':id'].$get({ param: { id: String(id) } }), 'Loading shared quiz…'),
+  sharedStatus: (quizId) => unwrap(rpc.api.shared.status.$get({
+    query: { quiz_id: String(quizId) },
+  }), { silent: true }),
+  publishQuiz: (quizId) => unwrap(rpc.api.shared.quizzes.$post({ json: { quiz_id: quizId } }), 'Publishing quiz…'),
+  unpublishSharedQuiz: (id) => unwrap(rpc.api.shared.quizzes[':id'].$delete({
+    param: { id: String(id) },
+  }), 'Unpublishing quiz…'),
+  importSharedQuiz: (id) => unwrap(rpc.api.shared.quizzes[':id'].import.$post({
+    param: { id: String(id) },
+  }), 'Importing quiz…'),
+
   updateCard: (id, patch) => unwrap(rpc.api.cards[':id'].$patch({
     param: { id: String(id) }, json: patch,
   }), 'Saving card…'),

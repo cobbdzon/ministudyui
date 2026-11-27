@@ -16,8 +16,14 @@ const MATH_TOKEN = 'MINISTUDYMATHSPAN';
 
 function safeUrl(raw: string): string {
   const url = String(raw ?? '').trim();
-  const scheme = /^([a-z][a-z\d+.-]*):/i.exec(url)?.[1]?.toLowerCase();
+  // Browsers strip ASCII whitespace/control characters while parsing URLs, so
+  // "java\tscript:..." must be checked after removing them, not just trimmed.
+  const normalized = url.replace(/[\u0000-\u0020]/g, '');
+  const scheme = /^([a-z][a-z\d+.-]*):/i.exec(normalized)?.[1]?.toLowerCase();
   if (scheme && scheme !== 'http' && scheme !== 'https' && scheme !== 'mailto') return '#';
+  // Protocol-relative URLs silently navigate to another origin; shared content
+  // is untrusted, so only explicit http(s)/mailto or local paths are allowed.
+  if (!scheme && url.startsWith('//')) return '#';
   return escapeHtml(url);
 }
 

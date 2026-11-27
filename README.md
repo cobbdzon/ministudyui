@@ -1,9 +1,10 @@
 # ministudyui
 
 A quiet study app for decks, spaced repetition, quizzes, attempts, grading and stats —
-now with **per-user encryption**, invite-only multi-user accounts, and MCP over Streamable
-HTTP. One Bun process serves the web UI/API and `/mcp`; all domain logic lives in shared
-"boxes". All state lives under `DATA_DIR` (default `<repo>/data`).
+now with **per-user encryption**, invite-only multi-user accounts, MCP over Streamable
+HTTP, and a **shared quiz library**. One Bun process serves the web UI/API and `/mcp`;
+all domain logic lives in shared "boxes". All state lives under `DATA_DIR` (default
+`<repo>/data`).
 
 ## Quick start (owner)
 
@@ -66,6 +67,15 @@ erDiagram
 `auth.db` holds identities, wrapped keys, invite hashes and token wraps — never study
 content or unwrapped keys. Each `users/<id>.db` holds that user's decks, cards, SRS state,
 quizzes, questions, attempts and answers; its `user_version` is 6.
+
+`shared.db` is the deliberate exception: it is **plaintext** and contains only quiz
+snapshots their owners explicitly published. From a quiz page choose **Share** to copy
+the quiz, its questions, answers and explanations there; other signed-in users can preview
+and **Import** it into their own encrypted library. Later private edits leave the shared
+copy unchanged until you republish (the quiz page shows an “update available” badge).
+Only the publisher can unpublish; admins can remove any snapshot. Deleting an account also
+removes its snapshots. The shared library lives at `#/shared` and is available through
+MCP tools `shared_quiz_{list,get,publish,unpublish,import}`.
 
 ### Key hierarchy
 
@@ -211,7 +221,7 @@ and set `PUBLIC_ORIGIN` to the external https URL.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATA_DIR` | `<repo>/data` | Root for `auth.db` and `users/`. |
+| `DATA_DIR` | `<repo>/data` | Root for `auth.db`, `shared.db` and `users/`. |
 | `PORT` | `3000` | HTTP port. |
 | `BIND_HOST` | `127.0.0.1` | Bind address. |
 | `PUBLIC_ORIGIN` | unset | External https origin; enables `Secure` + HSTS. |
@@ -219,6 +229,8 @@ and set `PUBLIC_ORIGIN` to the external https URL.
 | `TRUST_PROXY` | unset | `1` = use `X-Forwarded-For` for throttling (proxy must overwrite it). |
 | `SESSION_TTL_MINUTES` | `720` | Sliding session idle TTL. |
 | `MAX_USER_DB_MB` | `512` | Per-user DB write cap. |
+| `MAX_SHARED_DB_MB` | `64` | Shared library write cap. |
+| `MAX_SHARED_QUIZZES_PER_USER` | `100` | Published snapshots per user. |
 | `BACKUP_KEEP` | `14` | Backup directories retained. |
 | `MAX_OPEN_USER_DBS` | `32` | LRU cap for open user DB handles. |
 
@@ -245,7 +257,7 @@ app directly without TLS.
 ### Backups and restore
 
 ```sh
-bun run backup     # VACUUM INTO <DATA_DIR>/backups/<timestamp>/{auth.db,users/*.db}
+bun run backup     # VACUUM INTO <DATA_DIR>/backups/<timestamp>/{auth.db,shared.db,users/*.db}
 ```
 
 Schedule it with cron. `BACKUP_KEEP` (default 14) prunes old directories. Restore by

@@ -163,6 +163,10 @@ export const AttemptGetQuerySchema = z.object({ include_answers: qstr });
 export const AttemptListQuerySchema = z.object({ status: qstr, quiz_id: qstr, limit: qstr });
 export const PendingQuerySchema = z.object({ limit: qstr });
 export const StatsQuerySchema = z.object({ deck: qstr, days: qstr });
+// ---- shared (plaintext) quiz library ----
+export const SharedPublishSchema = z.looseObject({ quiz_id: z.number().int().min(1) });
+export const SharedListQuerySchema = z.object({ q: qstr, mine: qstr, limit: qstr });
+export const SharedStatusQuerySchema = z.object({ quiz_id: qstr });
 
 export type DeckCreateInput = z.infer<typeof DeckCreateSchema>;
 export type DeckUpdateInput = z.infer<typeof DeckUpdateSchema>;
@@ -194,6 +198,9 @@ export type AttemptGetQuery = z.infer<typeof AttemptGetQuerySchema>;
 export type AttemptListQuery = z.infer<typeof AttemptListQuerySchema>;
 export type PendingQuery = z.infer<typeof PendingQuerySchema>;
 export type StatsQuery = z.infer<typeof StatsQuerySchema>;
+export type SharedPublishInput = z.infer<typeof SharedPublishSchema>;
+export type SharedListQuery = z.infer<typeof SharedListQuerySchema>;
+export type SharedStatusQuery = z.infer<typeof SharedStatusQuerySchema>;
 
 // ---- Auth / admin / agent tokens ---------------------------------------------
 export const UsernameSchema = z.string().regex(/^[A-Za-z0-9._-]{3,32}$/);

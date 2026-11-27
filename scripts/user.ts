@@ -5,6 +5,7 @@ import * as auth from '../src/boxes/auth/index.js';
 import * as scope from '../src/boxes/scope/index.js';
 import * as userdb from '../src/boxes/userdb/index.js';
 import * as exporter from '../src/boxes/export/index.js';
+import * as shared from '../src/boxes/shared/index.js';
 import { ensureDataDir, dataDir } from '../src/boxes/paths.js';
 
 const KDF = { kdfCost: { N: 2 ** 17, r: 8, p: 1 } };
@@ -66,6 +67,8 @@ async function main(): Promise<void> {
   ensureDataDir();
   auth.open();
   auth.migrate();
+  shared.open();
+  shared.migrate();
   const { command, flags } = args();
   const userName = String(flags.user ?? '');
 
@@ -116,6 +119,7 @@ async function main(): Promise<void> {
     case 'delete': {
       const user = findUser(userName);
       auth.deleteUser(user.id);
+      shared.deleteAllForUser(user.id);
       console.log(`deleted ${user.username} and its database`);
       break;
     }
@@ -162,4 +166,4 @@ async function main(): Promise<void> {
 main().catch((e) => {
   console.error(`user: ${e instanceof Error ? e.message : String(e)}`);
   process.exitCode = 1;
-}).finally(() => auth.close());
+}).finally(() => { auth.close(); shared.close(); });

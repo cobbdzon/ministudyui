@@ -3,6 +3,7 @@ import { escapeHtml as esc, markdownInline as mdi, renderMath } from '../math.js
 import { plural, toast } from '../ui.js';
 import { errorMessage } from '../api.js';
 import type { AppContext } from '../context.js';
+import { quizTabs } from './shared.js';
 import type { ChangeEvent } from '../../shared/types.js';
 
 export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | (() => void)> {
@@ -22,6 +23,8 @@ export async function mount(el: HTMLElement, ctx: AppContext): Promise<void | ((
           <p class="page-sub">Check what stuck. Answers are revealed after you submit, and free responses are graded by your AI.</p>
         </div>
       </header>
+
+      ${quizTabs('mine')}
 
       <div class="section-head">
         <h2 class="section-title">All quizzes</h2>

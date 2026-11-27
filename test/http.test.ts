@@ -5,6 +5,7 @@ import type { Database } from 'bun:sqlite';
 import { app } from '../src/http/app.js';
 import * as store from '../src/boxes/store/index.js';
 import * as auth from '../src/boxes/auth/index.js';
+import * as shared from '../src/boxes/shared/index.js';
 import * as scope from '../src/boxes/scope/index.js';
 import * as session from '../src/http/session.js';
 
@@ -34,12 +35,14 @@ beforeAll(async () => {
   process.env.DATA_DIR = tmp;
   auth.open(join(tmp, 'auth.db'));
   auth.migrate();
+  shared.open(join(tmp, 'shared.db'));
+  shared.migrate();
   if (!auth.hasUsers()) {
     await auth.createUser({ username: 'tester', passphrase: 'test passphrase long', admin: true, kdfCost: { N: 16, r: 8, p: 1 } });
   }
 });
 afterAll(() => {
-  auth.close(); store.close(); session.clear();
+  auth.close(); shared.close(); store.close(); session.clear();
   rmSync(tmp, { recursive: true, force: true });
 });
 beforeEach(() => {
@@ -290,5 +293,50 @@ describe('attempts, grading and stats', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     await res.body?.cancel();
+  });
+});
+
+describe('shared quizzes over HTTP', () => {
+  it('requires a session for the shared library', async () => {
+    const { res } = await call('/api/shared/quizzes', { headers: { cookie: '' } });
+    expect(res.status).toBe(401);
+  });
+
+  it('publishes, lists, previews, imports and unpublishes a quiz', async () => {
+    const created = await call('/api/quizzes', {
+      method: 'POST',
+      body: {
+        title: 'HTTP shared quiz',
+        questions: [{
+          type: 'mcq', prompt: 'Pick one',
+          choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'b',
+        }],
+      },
+    });
+    expect(created.res.status).toBe(200);
+    const quizId = created.json.id as number;
+
+    const published = await call('/api/shared/quizzes', { method: 'POST', body: { quiz_id: quizId } });
+    expect(published.res.status).toBe(200);
+    const sharedId = published.json.quiz.id as number;
+    expect(published.json.quiz.mine).toBe(true);
+
+    const listed = await call('/api/shared/quizzes');
+    expect(listed.json.quizzes.some((q: { id: number }) => q.id === sharedId)).toBe(true);
+    const mine = await call('/api/shared/quizzes?mine=1');
+    expect(mine.json.quizzes.some((q: { id: number }) => q.id === sharedId)).toBe(true);
+    const status = await call(`/api/shared/status?quiz_id=${quizId}`);
+    expect(status.json.status).toMatchObject({ shared_id: sharedId, stale: false });
+    const detail = await call(`/api/shared/quizzes/${sharedId}`);
+    expect(detail.json.questions).toHaveLength(1);
+
+    const imported = await call(`/api/shared/quizzes/${sharedId}/import`, { method: 'POST' });
+    expect(imported.res.status).toBe(200);
+    expect(imported.json.quizzes_created).toBe(1);
+
+    const removed = await call(`/api/shared/quizzes/${sharedId}`, { method: 'DELETE' });
+    expect(removed.res.status).toBe(200);
+    const after = await call(`/api/shared/quizzes/${sharedId}`);
+    expect(after.res.status).toBe(404);
   });
 });

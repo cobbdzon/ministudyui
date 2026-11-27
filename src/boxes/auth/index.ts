@@ -409,7 +409,9 @@ export function revokeAgentToken(userId: number, tokenId: string): void {
   if (!r.changes) throw new AppError('NOT_FOUND', 'Token not found');
 }
 
-export interface AgentUnlock { userId: number; mode: 'read' | 'write'; tokenId: string; keys: vaultSubkeys }
+export interface AgentUnlock {
+  userId: number; username: string; mode: 'read' | 'write'; tokenId: string; keys: vaultSubkeys;
+}
 
 export function unlockWithAgentToken(token: string): AgentUnlock {
   const fail = () => new AppError('UNAUTHENTICATED', 'Invalid token');
@@ -436,7 +438,7 @@ export function unlockWithAgentToken(token: string): AgentUnlock {
         store.runOn(d, 'UPDATE agent_tokens SET last_used_at=strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id=?', [row.id]);
       }
       return {
-        userId: row.user_id, mode: row.mode, tokenId: row.token_id,
+        userId: row.user_id, username: user.username, mode: row.mode, tokenId: row.token_id,
         keys: { enc: blob.slice(0, 32), idx: blob.slice(32, 64) },
       };
     }

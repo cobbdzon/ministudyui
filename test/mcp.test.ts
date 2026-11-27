@@ -19,6 +19,7 @@ import * as session from '../src/http/session.js';
 import * as auth from '../src/boxes/auth/index.js';
 import * as scope from '../src/boxes/scope/index.js';
 import * as userdb from '../src/boxes/userdb/index.js';
+import * as shared from '../src/boxes/shared/index.js';
 import { userDbPath } from '../src/boxes/paths.js';
 import snapshot from './fixtures/mcp-tools.snapshot.json';
 
@@ -37,9 +38,11 @@ const MUTATING = new Set([
   'deck_create', 'deck_delete', 'deck_update', 'card_add', 'card_update',
   'card_schedule', 'card_delete', 'quiz_create', 'quiz_add_questions',
   'quiz_update', 'quiz_delete', 'question_update', 'question_delete', 'answer_grade',
+  'shared_quiz_publish', 'shared_quiz_unpublish', 'shared_quiz_import',
 ]);
 const DESTRUCTIVE = new Set([
   'deck_delete', 'card_delete', 'quiz_delete', 'question_delete', 'answer_grade',
+  'shared_quiz_unpublish',
 ]);
 
 let tmp = '';
@@ -66,6 +69,8 @@ beforeAll(async () => {
   process.env.DATA_DIR = tmp;
   auth.open(join(tmp, 'auth.db'));
   auth.migrate();
+  shared.open(join(tmp, 'shared.db'));
+  shared.migrate();
 
   const admin = await auth.createUser({ username: 'mcpadmin', passphrase: PASSPHRASE, admin: true, ...COST });
   const friend = await auth.createUser({ username: 'mcpfriend', passphrase: PASSPHRASE, admin: false, ...COST });
@@ -100,6 +105,7 @@ afterAll(() => {
   session.clear();
   userdb.closeAll();
   auth.close();
+  shared.close();
   resetMcpThrottles();
   if (oldDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = oldDir;
   if (oldPort === undefined) delete process.env.PORT; else process.env.PORT = oldPort;
@@ -469,6 +475,61 @@ describe('MCP over HTTP — token storage', () => {
     for (const p of [authFile, `${authFile}-wal`, `${authFile}-shm`]) {
       if (!existsSync(p)) continue;
       expect(readFileSync(p).includes(Buffer.from(secret)), `${p} leaked the token secret`).toBe(false);
+    }
+  });
+});
+
+describe('MCP over HTTP — shared quiz library', () => {
+  test('read-only tokens get shared reads but no publish, import or unpublish', async () => {
+    const client = await connect(readToken);
+    try {
+      const { tools } = await client.listTools();
+      const names = tools.map((t) => t.name);
+      expect(names).toContain('shared_quiz_list');
+      expect(names).toContain('shared_quiz_get');
+      for (const mutating of ['shared_quiz_publish', 'shared_quiz_import', 'shared_quiz_unpublish']) {
+        expect(names).not.toContain(mutating);
+      }
+    } finally {
+      await client.close();
+    }
+  });
+
+  test('publish, list, get, import and owner-only unpublish work over MCP', async () => {
+    const owner = await connect(writeToken);
+    const reader = await connect(friendWriteToken);
+    try {
+      const created = await owner.callTool({
+        name: 'quiz_create',
+        arguments: {
+          title: 'MCP shared quiz',
+          questions: [{
+            type: 'mcq', prompt: 'Pick one',
+            choices: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], correct: 'b',
+          }],
+        },
+      });
+      expect(created.isError).not.toBe(true);
+      const quizId = toolJson(created).id as number;
+
+      const published = await owner.callTool({ name: 'shared_quiz_publish', arguments: { quiz_id: quizId } });
+      expect(published.isError).not.toBe(true);
+      const sharedId = toolJson(published).id as number;
+
+      const listed = await reader.callTool({ name: 'shared_quiz_list', arguments: { query: 'MCP shared', mine: false } });
+      expect((toolJson(listed).quizzes as Array<{ id: number }>).some((q) => q.id === sharedId)).toBe(true);
+      const got = await reader.callTool({ name: 'shared_quiz_get', arguments: { shared_id: sharedId } });
+      expect((toolJson(got).questions as unknown[]).length).toBe(1);
+      const imported = await reader.callTool({ name: 'shared_quiz_import', arguments: { shared_id: sharedId } });
+      expect(toolJson(imported).quizzes_created).toBe(1);
+
+      const forbidden = await reader.callTool({ name: 'shared_quiz_unpublish', arguments: { shared_id: sharedId } });
+      expect(forbidden.isError).toBe(true);
+      const removed = await owner.callTool({ name: 'shared_quiz_unpublish', arguments: { shared_id: sharedId } });
+      expect(removed.isError).not.toBe(true);
+    } finally {
+      await owner.close();
+      await reader.close();
     }
   });
 });

@@ -4,7 +4,7 @@ import type { icon } from './icons.js';
 import type { escapeHtml } from './math.js';
 import type { toast } from './ui.js';
 
-export type ViewId = 'home' | 'review' | 'deck' | 'quizzes' | 'quiz' | 'attempt' | 'grading' | 'stats' | 'import';
+export type ViewId = 'home' | 'review' | 'deck' | 'quizzes' | 'shared' | 'quiz' | 'attempt' | 'grading' | 'stats' | 'import';
 export type RoutedViewId = Exclude<ViewId, 'import'>;
 
 export interface AppContext {

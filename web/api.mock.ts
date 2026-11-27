@@ -17,7 +17,8 @@ import type {
   AnswerRow, AttemptStatus, CardDto, Choice, DeckRef, DeckSummary, GradeResult,
   OkResponse,
   PendingAnswerDto, QuestionAnswer, QuestionType, QuizQuestionDto,
-  QuizSummary, ReviewCardDto, Source, StatsDto, UiContext, UiContextInput,
+  QuizSummary, ReviewCardDto, SharedPublishResponse, SharedQuestionDto,
+  SharedQuizSummary, SharedStatus, Source, StatsDto, UiContext, UiContextInput,
 } from '../shared/types.js';
 
 interface DeckFixture { id: number; name: string; description: string; created_at: string }
@@ -393,6 +394,53 @@ const questions: QuestionFixture[] = [
     explanation: 'Symmetry lets you move $A$ from one side of the inner product to the other.',
   },
 ];
+
+interface SharedFixture {
+  summary: SharedQuizSummary;
+  questions: SharedQuestionDto[];
+  sourceQuizId: number | null;
+}
+const sharedLibrary: SharedFixture[] = [
+  {
+    summary: {
+      id: 101, title: 'Series convergence', description: 'A short check of the ratio and p-series tests.',
+      owner_username: 'studyfriend', shuffle: false, question_count: 2, total_points: 4,
+      published_at: iso(5), updated_at: iso(5), mine: false,
+    },
+    questions: [
+      {
+        position: 1, type: 'mcq', prompt: 'Which test fits $\\sum \\frac{1}{n^p}$ for $p>1$?',
+        choices: [
+          { id: 'a', text: 'p-series test' },
+          { id: 'b', text: 'Ratio test' },
+          { id: 'c', text: 'Root test' },
+        ],
+        answer: { correct: 'a' }, explanation: 'A p-series converges exactly when $p>1$.', points: 2,
+      },
+      {
+        position: 2, type: 'numeric', prompt: 'For $\\sum a_n$, if $\\lim |a_{n+1}/a_n| = \\frac12$, the series…',
+        answer: { value: 1, tolerance: 0 }, explanation: 'A ratio below 1 means absolute convergence.', points: 2,
+      },
+    ],
+    sourceQuizId: null,
+  },
+  {
+    summary: {
+      id: 102, title: 'Eigenvector basics', description: 'Definitions and one short proof.',
+      owner_username: 'mathbuddy', shuffle: true, question_count: 1, total_points: 3,
+      published_at: iso(2), updated_at: iso(1), mine: false,
+    },
+    questions: [
+      {
+        position: 1, type: 'short', prompt: 'Define an eigenvector of a matrix $A$.',
+        answer: { reference: 'A nonzero vector $v$ with $Av=\\lambda v$ for some scalar $\\lambda$.', rubric: 'Nonzero (1), equation (2).' },
+        explanation: 'The scaling factor $\\lambda$ is the eigenvalue.', points: 3,
+      },
+    ],
+    sourceQuizId: null,
+  },
+];
+let sharedMineStale = false;
 
 const answers: AnswerFixture[] = [];
 const attempts: AttemptFixture[] = [
@@ -916,6 +964,96 @@ const api: Api = {
       }
     }
     return Promise.resolve(counts);
+  },
+
+  sharedQuizzes(opts = {}) {
+    const q = (opts.q || '').trim().toLowerCase();
+    const items = sharedLibrary.filter((item) => {
+      if (opts.mine && item.sourceQuizId === null) return false;
+      if (!q) return true;
+      return (item.summary.title + ' ' + item.summary.description + ' ' + item.summary.owner_username)
+        .toLowerCase().includes(q);
+    });
+    const limit = Math.min(Math.max(opts.limit || 50, 1), 100);
+    return Promise.resolve({
+      quizzes: items.slice(0, limit).map((item) => ({
+        ...clone(item.summary), mine: item.sourceQuizId !== null,
+      })),
+    });
+  },
+
+  sharedQuiz(id) {
+    const item = sharedLibrary.find((s) => s.summary.id === id);
+    if (!item) fail('shared quiz not found');
+    return Promise.resolve({
+      ...clone(item.summary), mine: item.sourceQuizId !== null, questions: clone(item.questions),
+    });
+  },
+
+  sharedStatus(quizId) {
+    const item = sharedLibrary.find((s) => s.sourceQuizId === quizId);
+    const status: SharedStatus | null = item
+      ? { shared_id: item.summary.id, stale: sharedMineStale, updated_at: item.summary.updated_at }
+      : null;
+    return Promise.resolve({ status });
+  },
+
+  publishQuiz(quizId) {
+    const quiz = quizzes.find((q) => q.id === quizId);
+    if (!quiz) fail('quiz not found');
+    const dtoQuestions = questionDtos(quizId, true);
+    const questions: SharedQuestionDto[] = dtoQuestions.map((q) => ({
+      position: q.position, type: q.type, prompt: q.prompt, explanation: q.explanation,
+      points: q.points, ...(q.choices ? { choices: q.choices } : {}), answer: q.answer ?? {},
+    }));
+    let item = sharedLibrary.find((s) => s.sourceQuizId === quizId);
+    if (item) {
+      item.summary = {
+        ...item.summary, title: quiz.title, description: quiz.description,
+        shuffle: !!quiz.shuffle, question_count: questions.length,
+        total_points: questions.reduce((a, q) => a + q.points, 0),
+        updated_at: iso(0), mine: true,
+      };
+      item.questions = questions;
+    } else {
+      item = {
+        summary: {
+          id: 103 + sharedLibrary.length, title: quiz.title, description: quiz.description,
+          owner_username: 'you', shuffle: !!quiz.shuffle, question_count: questions.length,
+          total_points: questions.reduce((a, q) => a + q.points, 0),
+          published_at: iso(0), updated_at: iso(0), mine: true,
+        },
+        questions, sourceQuizId: quizId,
+      };
+      sharedLibrary.unshift(item);
+    }
+    sharedMineStale = false;
+    const response: SharedPublishResponse = { ok: true, quiz: clone(item.summary) };
+    return Promise.resolve(response);
+  },
+
+  unpublishSharedQuiz(id) {
+    const idx = sharedLibrary.findIndex((s) => s.summary.id === id);
+    if (idx < 0) fail('shared quiz not found');
+    if (sharedLibrary[idx]!.sourceQuizId === null) fail('only the publisher can remove a shared quiz');
+    sharedLibrary.splice(idx, 1);
+    sharedMineStale = false;
+    return Promise.resolve({ ok: true as const });
+  },
+
+  async importSharedQuiz(id) {
+    const item = sharedLibrary.find((s) => s.summary.id === id);
+    if (!item) fail('shared quiz not found');
+    return api.importBundle({
+      quizzes: [{
+        title: item.summary.title, description: item.summary.description,
+        shuffle: item.summary.shuffle,
+        questions: item.questions.map((q) => ({
+          type: q.type, prompt: q.prompt, explanation: q.explanation, points: q.points,
+          ...(q.choices ? { choices: q.choices } : {}), ...q.answer,
+        })) as never,
+      }],
+    });
   },
 
   updateCard(id, patch) {

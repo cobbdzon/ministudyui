@@ -72,7 +72,7 @@ export async function handleMcp(c: Context): Promise<Response> {
     maxRequestBodySize: 2 * 1024 * 1024,
   });
   try {
-    registerTools(server, { readOnly: unlocked.mode === 'read' });
+    registerTools(server, { readOnly: unlocked.mode === 'read', username: unlocked.username });
     await server.connect(transport);
     return await scope.run(
       { userId: unlocked.userId, db, keys: unlocked.keys },

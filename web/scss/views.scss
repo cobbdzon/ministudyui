@@ -1168,6 +1168,13 @@
   min-width: 0;
 }
 
+// The action row owns a full line so sharing can sit against the page's right
+// edge, away from the start/review/delete actions on the left.
+.quiz-head .page-actions {
+  flex: 1 1 100%;
+  justify-content: space-between;
+}
+
 .quiz-title {
   font: var(--md-sys-typescale-display-small);
   letter-spacing: -0.02em;
@@ -2887,5 +2894,81 @@
 
   .auth-row {
     flex-wrap: wrap;
+  }
+}
+
+/* ---------- Shared quiz library ---------- */
+
+.quiz-tabs {
+  margin: 0 0 var(--space-4);
+}
+
+.shared-result-count {
+  min-height: 20px;
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
+.shared-row {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shared-row__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shared-row__main:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
+.shared-row__meta {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
+.shared-row__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+}
+
+.shared-choices {
+  margin: 8px 0;
+  padding-inline-start: 20px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.shared-answer,
+.shared-explanation {
+  margin: 8px 0 0;
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.shared-explanation {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+@media (max-width: 600px) {
+  .shared-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shared-row__actions {
+    justify-content: flex-end;
   }
 }

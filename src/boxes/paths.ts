@@ -19,6 +19,11 @@ export function userDbPath(userId: number | string): string {
   return join(dataDir(), 'users', `${userId}.db`);
 }
 
+/** Deliberately plaintext: holds quizzes their owners chose to share. */
+export function sharedDbPath(): string {
+  return join(dataDir(), 'shared.db');
+}
+
 export function ensureDataDir(): void {
   mkdirSync(join(dataDir(), 'users'), { recursive: true });
 }

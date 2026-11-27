@@ -1194,6 +1194,102 @@
     }
   },
   {
+    "name": "shared_quiz_get",
+    "description": "Get a shared quiz with its questions and answers from the unencrypted shared library",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "shared_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "shared_id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "shared_quiz_import",
+    "description": "Import a shared quiz into your own library; the copy is encrypted with your key and has no linked deck",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "shared_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "shared_id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "shared_quiz_list",
+    "description": "List quizzes shared by users of this instance. The shared library is unencrypted and includes answers.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "mine": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "shared_quiz_publish",
+    "description": "Publish a snapshot of one of your quizzes to the shared, unencrypted library. Includes questions, answers and explanations; any signed-in user can read and import it. Republishing replaces the previous snapshot.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "quiz_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "quiz_id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "shared_quiz_unpublish",
+    "description": "Remove one of your shared quizzes from the shared library (admins may remove any)",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "shared_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "shared_id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
     "name": "study_next_due",
     "description": "Next due cards",
     "inputSchema": {
