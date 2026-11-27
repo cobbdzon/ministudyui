@@ -2148,6 +2148,24 @@
     display: none;
   }
 
+  .quiz-list .list__row {
+    grid-template-columns: 40px minmax(0, 1fr) 24px;
+    grid-template-areas:
+      "mark main chevron"
+      "mark meta meta";
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+  }
+
+  .quiz-list .quiz-mark {
+    grid-area: mark;
+    align-self: start;
+  }
+
+  .quiz-list .list__main { grid-area: main; }
+  .quiz-list .list__aside { grid-area: meta; }
+  .quiz-list .list__chevron { grid-area: chevron; }
+
   .home-greeting {
     font: var(--md-sys-typescale-display-medium);
   }
