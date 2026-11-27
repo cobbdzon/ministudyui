@@ -34,16 +34,16 @@ Quiz
 }
 One quiz per deck: a deck can have at most one linked quiz, and a quiz can belong to at most one deck. Never give two quizzes the same deck.
 
-Question: an object with "type" and "prompt" (required, 1-4000 characters), plus type-specific fields:
+Question: an object with "type" and "prompt" (required, 1-4000 characters), plus type-specific fields. Only auto-graded types are allowed:
 - "mcq": "choices" = 2-8 objects { "id": string, "text": string }, "correct" = the id of the correct choice.
 - "multi": same "choices", but "correct" is an array of the correct ids (at least one).
 - "numeric": "value" (number), optional "tolerance" (number >= 0, default 0), "tolerance_type" ("abs" or "rel", default "abs"), optional "unit" (<= 20 characters).
-- "short" or "latex": "reference" (required, the model answer, 1-4000 characters) and optional "rubric" (<= 2000 characters). Use "latex" when the answer must show worked steps.
+Never use "short" or "latex" questions: free responses graded by AI are reserved for quizzes created through MCP. If the material asks for a written or worked answer, rewrite it as "mcq", "multi", or "numeric" instead. Never emit "reference" or "rubric" fields.
 All types also accept optional "explanation" (<= 4000 characters) and "points" (number > 0 and <= 100, default 1).
 Choice ids must be 1-16 lowercase letters, digits or underscores (e.g. "a", "b", "c") and "correct" must reference one of them.
 
 MARKDOWN FORMATTING
-Every text field is rendered as Markdown: deck and quiz descriptions, card fronts and backs, question prompts, choice texts, explanations, references, and rubrics. Use it to make content clear and scannable:
+Every text field is rendered as Markdown: deck and quiz descriptions, card fronts and backs, question prompts, choice texts, and explanations. Use it to make content clear and scannable:
 - "#" through "######" for headings (use sparingly in short fields)
 - "- " or "1. " for bulleted or numbered lists
 - "**bold**", "*italic*", "~~strikethrough~~"
